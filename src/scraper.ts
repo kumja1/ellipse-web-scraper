@@ -8,7 +8,7 @@ export async function scrapeSchools(divisionCode: number) {
             proxyUrls: process.env.PROXY_URLS?.split(',') || [],
         }),
         async requestHandler({ $, request }) {
-            const schools = $('table tbody tr').map((i, row) => {
+            const schools = $('table tbody tr').map((_, row) => {
                 const cells = $(row).find('td');
                 return {
                     name: cells.eq(0).text().trim(),
