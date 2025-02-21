@@ -1,23 +1,26 @@
 # Stage 1: Build
 FROM apify/actor-node:20 AS builder
 
-# Copy just package.json and package-lock.json
-# to speed up the build using Docker layer cache.
+# Set working directory inside the container
+WORKDIR /app
+
+# Copy package.json and package-lock.json first (for better caching)
 COPY package*.json ./
 
-# Install all dependencies. Don't audit to speed up the installation.
+# Install dependencies (skip audit for faster builds)
 RUN npm install --include=dev --audit=false
 
-# Next, copy the source files using the user set
-# in the base image.
+# Copy the rest of the source files
 COPY . ./
 
-# Install all dependencies and build the project.
-RUN npm run build
+# Run TypeScript compilation
+RUN npm run build --if-present
 
 # Stage 2: Production Image
 FROM apify/actor-node:20
+WORKDIR /app
 
+# Install only production dependencies
 RUN npm --quiet set progress=false \
     && npm install --omit=dev --omit=optional \
     && echo "Installed NPM packages:" \
@@ -27,14 +30,16 @@ RUN npm --quiet set progress=false \
     && echo "NPM version:" \
     && npm --version
 
-# Copy built files and installed dependencies from the builder stage
-COPY --from=builder /src/dist ./dist
-COPY --from=builder /src/node_modules ./node_modules
+# Copy the built files and dependencies from the builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 
-# Set production environment variable
+# Set production environment
 ENV NODE_ENV=production
 
-# Expose port and run the production command
+# Expose port 3000
 EXPOSE 3000
+
+# Run the application
 CMD ["npm", "run", "start:prod", "--silent"]
