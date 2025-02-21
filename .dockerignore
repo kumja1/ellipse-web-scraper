@@ -2,5 +2,4 @@ node_modules
 .git
 storage
 README.md
-tsconfig.json
 Dockerfile
