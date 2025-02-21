@@ -16,13 +16,14 @@
         "@types/cors": "^2.8.17",
         "@types/express": "^5.0.0",
         "@types/node": "^22.0.0",
+        "@types/bun": "^1.2.2",
         "nodemon": "^3.1.9",
         "tsx": "^4.4.0",
         "typescript": "~5.7.0"
     },
     "scripts": {
         "start": "npm run start:dev",
-        "start:prod": "node dist/server.js",
+        "start:prod": "bun dist/server.js",
         "start:dev": "tsx src/server.ts",
         "build": "tsc",
         "test": "echo \"Error: oops, the actor has no tests yet, sad!\" && exit 1"

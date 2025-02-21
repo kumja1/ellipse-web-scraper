@@ -1,25 +1,26 @@
-// server.js
-import express from 'express';
 import { scrapeSchools } from './scraper.js';
-import cors from "cors";
 
-const app = express();
-app.use(express.json());
-app.use(cors())
+async function handleRequest(req: Request) {
+    if (req.method === 'POST' && req.url === '/scrape') {
+        try {
+            const formData = await req.formData()
+            const divisionCode = Number(formData.get("divisionCode")?.toString());
+            const results = await scrapeSchools(divisionCode);
+            return Response.json({
+                divisionCode,
+                schools: results,
+            });
+        } catch (error: any) {
+            return new Response(error.message, { status: 500 })
+        }
 
-app.post('/scrape', async (req, res) => {
-    try {
-        const { divisionCode } = req.body;
-        const results = await scrapeSchools(divisionCode);
-
-        res.json({
-            divisionCode,
-            schools: results,
-        });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
     }
+    return new Response('Not Found', { status: 404 });
+}
+
+Bun.serve({
+    fetch: handleRequest,
+    port: process.env.PORT || 3000,
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+console.log(`Server running on port ${process.env.PORT || 3000}`);
