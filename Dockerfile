@@ -1,16 +1,31 @@
 # Stage 1: Build
 FROM apify/actor-node:20 AS builder
 
-# Copy package files to leverage Docker cache and install production dependencies
+# Copy just package.json and package-lock.json
+# to speed up the build using Docker layer cache.
 COPY package*.json ./
-RUN npm ci --omit=dev --audit=false
 
-# Copy source files and build the project
-COPY ./src ./src
+# Install all dependencies. Don't audit to speed up the installation.
+RUN npm install --include=dev --audit=false
+
+# Next, copy the source files using the user set
+# in the base image.
+COPY . ./
+
+# Install all dependencies and build the project.
 RUN npm run build
 
 # Stage 2: Production Image
 FROM apify/actor-node:20
+
+RUN npm --quiet set progress=false \
+    && npm install --omit=dev --omit=optional \
+    && echo "Installed NPM packages:" \
+    && (npm list --omit=dev --all || true) \
+    && echo "Node.js version:" \
+    && node --version \
+    && echo "NPM version:" \
+    && npm --version
 
 # Copy built files and installed dependencies from the builder stage
 COPY --from=builder /src/dist ./dist
