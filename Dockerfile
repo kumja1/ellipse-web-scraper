@@ -1,6 +1,5 @@
 # Stage 1: Build
 FROM apify/actor-node:20 AS builder
-WORKDIR /src
 
 # Copy package files to leverage Docker cache and install production dependencies
 COPY package*.json ./
@@ -13,7 +12,6 @@ RUN npm run build
 
 # Stage 2: Production Image
 FROM apify/actor-node:20
-WORKDIR /src
 
 # Copy built files and installed dependencies from the builder stage
 COPY --from=builder /src/dist ./dist
