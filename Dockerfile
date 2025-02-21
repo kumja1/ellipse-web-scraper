@@ -1,30 +1,29 @@
-# Stage 1: Build
+# Stage 1: Builder
 FROM apify/actor-node:20 AS builder
 
+# Set working directory inside the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json first (for better caching)
+# Copy only package.json and package-lock.json first (for better caching)
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies without auditing (for faster install)
 RUN npm install --include=dev --audit=false
 
 # Copy the rest of the source files
 COPY . ./
 
-# Run TypeScript compilation
+# Run TypeScript build
 RUN npm run build
 
 # Stage 2: Production Image
 FROM apify/actor-node:20
 WORKDIR /app
 
-# Copy package.json separately to ensure it's available
-COPY package*.json ./
-
-# Copy the built files and dependencies from the builder stage
+# Copy only the built files and installed dependencies from builder
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
+COPY package*.json ./
 
 # Install only production dependencies
 RUN npm --quiet set progress=false \
@@ -36,11 +35,8 @@ RUN npm --quiet set progress=false \
     && echo "NPM version:" \
     && npm --version
 
-# Set production environment
-ENV NODE_ENV=production
+# Expose the application port
+EXPOSE 8000
 
-# Expose port 3000
-EXPOSE 3000
-
-# Run the application
+# Start the application in production mode
 CMD ["npm", "run", "start:prod", "--silent"]
