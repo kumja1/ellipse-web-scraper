@@ -10,6 +10,8 @@ COPY package*.json ./
 # Install dependencies without auditing (for faster install)
 RUN npm install --include=dev --audit=false
 
+COPY tsconfig.json ./
+
 # Copy the rest of the source files
 COPY . ./
 
@@ -24,6 +26,7 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
+
 
 # Install only production dependencies
 RUN npm --quiet set progress=false \
