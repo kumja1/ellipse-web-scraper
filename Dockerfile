@@ -7,7 +7,6 @@ RUN npm install --include=dev --audit=false
 
 # Copy the rest of the application code and build
 COPY . .
-RUN npm run build
 
 # Stage 2: Production Stage
 FROM apify/actor-node:20
