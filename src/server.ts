@@ -8,7 +8,7 @@ async function handleRequest(req: Request) {
             const results = await scrapeSchools(divisionCode);
             return Response.json({
                 divisionCode,
-                schools: results,
+                schools: results.items,
             });
         } catch (error: any) {
             return new Response(error.message, { status: 500 })
