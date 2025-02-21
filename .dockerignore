@@ -1,8 +1,6 @@
-# configurations
-.idea
-
-# crawlee storage folder
-storage
-
-# installed files
 node_modules
+.git
+storage
+README.md
+tsconfig.json
+Dockerfile

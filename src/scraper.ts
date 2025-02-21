@@ -1,50 +1,92 @@
 import { CheerioCrawler, Dataset, ProxyConfiguration } from 'crawlee';
 
+interface SchoolData {
+    name: string;
+    division: string;
+    gradeSpan: string;
+    address: string;
+    divisionCode: number;
+}
+
 export async function scrapeSchools(divisionCode: number) {
-    const results: any[] = [];
+    const proxyConfiguration = new ProxyConfiguration({
+        proxyUrls: [
+            'http://150.136.247.129:1080',
+            'http://173.208.246.194:40000',
+            'http://45.180.16.212:9292',
+            'http://51.68.175.56:1080',
+            'http://89.116.27.24:8888',
+            'http://113.160.133.32:8080',
+            'http://216.229.112.25:8080',
+            'http://138.91.159.185:80',
+            'http://23.247.137.142:80'
+        ],
+    });
 
     const crawler = new CheerioCrawler({
-        proxyConfiguration: new ProxyConfiguration({
-            proxyUrls: process.env.PROXY_URLS?.split(',') || [],
-        }),
-        async requestHandler({ $, request }) {
-            const schools = $('table tbody tr').map((_, row) => {
+        proxyConfiguration,
+        retryOnBlocked: true,
+        maxRequestRetries: 3,
+        maxConcurrency: 8,
+        maxRequestsPerMinute: 120,
+        async requestHandler({ $, request, enqueueLinks }) {
+            if (request.label === 'DETAIL') {
+                const address = $("span[itemprop='address']").text().trim();
+                await Dataset.pushData({
+                    ...request.userData.schoolInfo,
+                    address: address || 'Address not found',
+                    divisionCode: request.userData.divisionCode
+                });
+                return;
+            }
+
+            const rows = $('table tbody tr');
+            const schoolLinks = rows.map((_, row) => {
                 const cells = $(row).find('td');
                 return {
-                    name: cells.eq(0).text().trim(),
-                    division: cells.eq(1).text().trim(),
-                    gradeSpan: cells.eq(2).text().trim(),
-                    address: cells.eq(3).text().trim()
+                    url: $(cells.eq(0)).find('a').attr('href'),
+                    userData: {
+                        schoolInfo: {
+                            name: cells.eq(0).text().trim(),
+                            division: cells.eq(1).text().trim(),
+                            gradeSpan: cells.eq(2).text().trim(),
+                        }
+                    }
                 };
             }).get();
 
-            const totalPages = Math.max(...$('div.pagination a.page-numbers')
-                .map((_, el) => parseInt($(el).text()) || 0)
-                .get());
+            const totalPages = Number($('div.pagination a.page-numbers:not(.current):not(.next)').last().text() || '1');
 
-            await Dataset.pushData({
-                divisionCode: request.userData.divisionCode,
-                schools,
-                currentPage: request.userData.page,
-                totalPages
+            await enqueueLinks({
+                urls: schoolLinks.map(link => <string>link.url),
+                label: 'DETAIL',
+                forefront: true,
+                userData: {
+                    divisionCode: request.userData.divisionCode,
+                    schoolInfo: schoolLinks[0]?.userData.schoolInfo
+                }
             });
 
-            if (request.userData.page < totalPages) {
-                await crawler.addRequests([{
-                    url: `${request.url}&page=${request.userData.page + 1}`,
+            const currentPage = request.userData.page;
+            if (currentPage <= totalPages) {
+                const nextPage = currentPage + 1;
+                await enqueueLinks({
+                    urls: [`${request.url}&page=${nextPage}`],
+                    label: 'LIST',
                     userData: {
                         divisionCode: request.userData.divisionCode,
-                        page: request.userData.page + 1
+                        page: nextPage
                     }
-                }]);
+                });
             }
         }
     });
 
     await crawler.run([{
         url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
+        label: 'LIST',
         userData: { divisionCode, page: 1 }
     }]);
 
-    return results;
+    return Dataset.getData<SchoolData>();
 }

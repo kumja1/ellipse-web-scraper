@@ -7,7 +7,8 @@
         "axios": "^1.7.9",
         "cors": "^2.8.5",
         "crawlee": "^3.0.0",
-        "express": "^4.21.2"
+        "express": "^4.21.2",
+        "https-proxy-agent": "^7.0.6"
     },
     "devDependencies": {
         "@apify/tsconfig": "^0.1.0",
@@ -15,6 +16,7 @@
         "@types/cors": "^2.8.17",
         "@types/express": "^5.0.0",
         "@types/node": "^22.0.0",
+        "nodemon": "^3.1.9",
         "tsx": "^4.4.0",
         "typescript": "~5.7.0"
     },

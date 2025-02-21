@@ -1,50 +1,28 @@
-# Specify the base Docker image. You can read more about
-# the available images at https://crawlee.dev/docs/guides/docker-images
-# You can also use any other image from Docker Hub.
+# Stage 1: Build
 FROM apify/actor-node:20 AS builder
+WORKDIR /src
 
-# Copy just package.json and package-lock.json
-# to speed up the build using Docker layer cache.
+# Copy package files to leverage Docker cache and install production dependencies
 COPY package*.json ./
+COPY tsconfig.json ./
+RUN npm ci --omit=dev --audit=false
 
-# Install all dependencies. Don't audit to speed up the installation.
-RUN npm install --include=dev --audit=false
-
-# Next, copy the source files using the user set
-# in the base image.
-COPY . ./
-
-# Install all dependencies and build the project.
-# Don't audit to speed up the installation.
+# Copy source files and build the project
+COPY ./src ./src
 RUN npm run build
 
-# Create final image
+# Stage 2: Production Image
 FROM apify/actor-node:20
+WORKDIR /src
 
-# Copy only built JS files from builder image
-COPY --from=builder /usr/src/app/dist ./dist
-
-# Copy just package.json and package-lock.json
-# to speed up the build using Docker layer cache.
+# Copy built files and installed dependencies from the builder stage
+COPY --from=builder /src/dist ./dist
+COPY --from=builder /src/node_modules ./node_modules
 COPY package*.json ./
 
-# Install NPM packages, skip optional and development dependencies to
-# keep the image small. Avoid logging too much and print the dependency
-# tree for debugging
-RUN npm --quiet set progress=false \
-    && npm install --omit=dev --omit=optional \
-    && echo "Installed NPM packages:" \
-    && (npm list --omit=dev --all || true) \
-    && echo "Node.js version:" \
-    && node --version \
-    && echo "NPM version:" \
-    && npm --version
+# Set production environment variable
+ENV NODE_ENV=production
 
-# Next, copy the remaining files and directories with the source code.
-# Since we do this after NPM install, quick build will be really fast
-# for most source file changes.
-COPY . ./
-
-
-# Run the image.
-CMD npm run start:prod --silent
+# Expose port and run the production command
+EXPOSE 3000
+CMD ["npm", "run", "start:prod", "--silent"]
