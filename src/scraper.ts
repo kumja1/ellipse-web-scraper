@@ -15,19 +15,19 @@ export async function scrapeSchools(divisionCode: number) {
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
     const proxyConfiguration = new ProxyConfiguration({
-        proxyUrls:[
-            "https://gmyxzepk-1:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-2:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-3:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-4:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-5:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-6:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-7:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-8:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-9:29r7r2d3xequ@p.webshare.io:80",
-            "https://gmyxzepk-10:29r7r2d3xequ@p.webshare.io:80"
-          ],
-          
+        proxyUrls: [
+            "http://gmyxzepk-1:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-2:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-3:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-4:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-5:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-6:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-7:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-8:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-9:29r7r2d3xequ@p.webshare.io:80",
+            "http://gmyxzepk-10:29r7r2d3xequ@p.webshare.io:80"
+        ],
+
 
     });
     log.debug('Proxy configuration initialized.');
@@ -100,8 +100,14 @@ export async function scrapeSchools(divisionCode: number) {
             log.debug(`Current page: ${currentPage}`);
             if (currentPage <= totalPages) {
                 const nextPage = currentPage + 1;
+                const currentUrl = new URL(request.url);
+                currentUrl.pathname = currentUrl.pathname
+                    .replace(/\/page\/\d+(\/)?$/, '')
+                    .replace(/\/$/, '');
+
+                currentUrl.pathname += `/page/${nextPage}`;
                 await enqueueLinks({
-                    urls: [`${request.url}&page=${nextPage}`],
+                    urls: [currentUrl.toString()],
                     label: 'LIST',
                     userData: {
                         divisionCode: request.userData.divisionCode,
