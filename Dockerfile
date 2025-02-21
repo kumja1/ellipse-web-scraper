@@ -15,8 +15,7 @@ RUN npm run build
 FROM apify/actor-node:20
 
 # Install Bun globally
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:$PATH"
+RUN npm i -g bun
 
 # Copy built files and necessary assets from the build stage
 COPY --from=build /app/dist ./dist
