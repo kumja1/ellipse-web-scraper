@@ -55,7 +55,12 @@ export async function scrapeSchools(divisionCode: number) {
                 };
             }).get();
 
-            const totalPages = Number($('div.pagination a.page-numbers:not(.current):not(.next)').last().text() || '1');
+            const totalPages = Number(
+                $('div.pagination a.page-numbers:not(.current):not(.next)')
+                  .last()
+                  .text()
+                  .replace(/\D/g, '') || '1'  // Remove non-numeric characters
+              );            
 
             await enqueueLinks({
                 urls: schoolLinks.map(link => <string>link.url),

@@ -1,7 +1,7 @@
 import { scrapeSchools } from './scraper.js';
 
 async function handleRequest(req: Request) {
-    if (req.method === 'POST' && req.url === '/scrape') {
+    if (req.method === 'POST' && req.url.endsWith("/scrape")) {
         try {
             const formData = await req.formData()
             const divisionCode = Number(formData.get("divisionCode")?.toString());
