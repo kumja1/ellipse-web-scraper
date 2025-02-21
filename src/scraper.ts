@@ -15,18 +15,19 @@ export async function scrapeSchools(divisionCode: number) {
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
     const proxyConfiguration = new ProxyConfiguration({
-        proxyUrls: [
-            "p.webshare.io:80:gmyxzepk-1:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-2:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-3:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-4:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-5:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-6:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-7:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-8:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-9:29r7r2d3xequ",
-            "p.webshare.io:80:gmyxzepk-10:29r7r2d3xequ"
-        ],
+        proxyUrls:[
+            "https://gmyxzepk-1:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-2:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-3:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-4:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-5:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-6:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-7:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-8:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-9:29r7r2d3xequ@p.webshare.io:80",
+            "https://gmyxzepk-10:29r7r2d3xequ@p.webshare.io:80"
+          ],
+          
 
     });
     log.debug('Proxy configuration initialized.');
