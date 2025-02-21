@@ -15,7 +15,7 @@ FROM apify/actor-node:20
 RUN npm install -g bun
 
 # Copy built files and necessary assets from the build stage
-COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/src ./src
 COPY package*.json ./
 
 # Install production dependencies using Bun
