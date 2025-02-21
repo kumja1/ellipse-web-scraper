@@ -19,7 +19,7 @@ COPY --from=build /usr/src/app/src ./src
 COPY package*.json ./
 
 # Install production dependencies using Bun
-RUN bun install --production
+RUN bun install --production --frozen-lockfile
 
 # Expose the application port
 EXPOSE 8000
