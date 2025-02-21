@@ -1,6 +1,5 @@
 import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel } from 'crawlee';
 
-// Define the structure for school data
 interface SchoolData {
     name: string;
     division: string;
@@ -10,22 +9,13 @@ interface SchoolData {
 }
 
 export async function scrapeSchools(divisionCode: number) {
-    // Set the logging level to DEBUG for detailed output
     log.setLevel(LogLevel.DEBUG);
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
     const proxyConfiguration = new ProxyConfiguration({
+
         proxyUrls: [
-            "http://gmyxzepk-1:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-2:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-3:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-4:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-5:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-6:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-7:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-8:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-9:29r7r2d3xequ@p.webshare.io:80",
-            "http://gmyxzepk-10:29r7r2d3xequ@p.webshare.io:80"
+            "http://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80/"
         ],
 
 
@@ -36,10 +26,34 @@ export async function scrapeSchools(divisionCode: number) {
     const crawler = new CheerioCrawler({
         useSessionPool: true,
         proxyConfiguration,
+        sessionPoolOptions: {
+            sessionOptions: {
+                maxUsageCount: 3,
+            },
+        },
         retryOnBlocked: true,
-        maxRequestRetries: 5,
         maxConcurrency: 8,
         maxRequestsPerMinute: 120,
+        maxRequestRetries: 10, 
+        requestHandlerTimeoutSecs: 60,
+        additionalMimeTypes: ['text/html'],
+        preNavigationHooks: [
+            async ({ request, session, proxyInfo }) => {
+                session?.retire();
+                request.headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': 'https://www.google.com/',
+                    'Connection': 'keep-alive',
+                };
+                
+                if (proxyInfo) {
+                    request.headers['X-Proxy'] = proxyInfo.url;
+                }
+            }
+        ],
         async requestHandler({ $, request, enqueueLinks }) {
             log.debug(`Processing ${request.url} with label: ${request.label}`);
 
@@ -104,22 +118,25 @@ export async function scrapeSchools(divisionCode: number) {
                 currentUrl.pathname = currentUrl.pathname
                     .replace(/\/page\/\d+(\/)?$/, '')
                     .replace(/\/$/, '');
+                log.debug(`Cleaned Url: ${currentUrl.toString()}`)
 
                 currentUrl.pathname += `/page/${nextPage}`;
+                log.debug(`New Url:${currentUrl.toString()}`)
+
                 await enqueueLinks({
                     urls: [currentUrl.toString()],
                     label: 'LIST',
                     userData: {
                         divisionCode: request.userData.divisionCode,
                         page: nextPage
-                    }
+                    },
+
                 });
                 log.debug(`Enqueued next page: ${nextPage}`);
             }
         }
     });
 
-    // Start the crawler
     await crawler.run([{
         url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
         label: 'LIST',
@@ -127,7 +144,6 @@ export async function scrapeSchools(divisionCode: number) {
     }]);
     log.debug('Crawler run completed.');
 
-    // Retrieve and return the scraped data
     const data = await Dataset.getData<SchoolData>();
     log.debug(`Retrieved ${data.items.length} items from the dataset.`);
     return data;
