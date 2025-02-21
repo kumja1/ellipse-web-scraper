@@ -25,7 +25,7 @@ export async function scrapeSchools(divisionCode: number) {
     // Initialize the crawler
     const crawler = new CheerioCrawler({
         useSessionPool: true,
-        proxyConfiguration,
+        // proxyConfiguration,
         sessionPoolOptions: {
             sessionOptions: {
                 maxUsageCount: 3,
