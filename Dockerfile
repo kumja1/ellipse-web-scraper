@@ -1,34 +1,36 @@
-# Stage 1: Builder
+# Specify the base Docker image. You can read more about
+# the available images at https://crawlee.dev/docs/guides/docker-images
+# You can also use any other image from Docker Hub.
 FROM apify/actor-node:20 AS builder
 
-# Set working directory inside the container
-WORKDIR /app
-
-# Copy only package.json and package-lock.json first (for better caching)
+# Copy just package.json and package-lock.json
+# to speed up the build using Docker layer cache.
 COPY package*.json ./
 
-# Install dependencies without auditing (for faster install)
+# Install all dependencies. Don't audit to speed up the installation.
 RUN npm install --include=dev --audit=false
 
-COPY tsconfig.json ./
-
-# Copy the rest of the source files
+# Next, copy the source files using the user set
+# in the base image.
 COPY . ./
 
-# Run TypeScript build
+# Install all dependencies and build the project.
+# Don't audit to speed up the installation.
 RUN npm run build
 
-# Stage 2: Production Image
+# Create final image
 FROM apify/actor-node:20
-WORKDIR /app
 
-# Copy only the built files and installed dependencies from builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
+# Copy only built JS files from builder image
+COPY --from=builder /usr/src/app/dist ./dist
+
+# Copy just package.json and package-lock.json
+# to speed up the build using Docker layer cache.
 COPY package*.json ./
 
-
-# Install only production dependencies
+# Install NPM packages, skip optional and development dependencies to
+# keep the image small. Avoid logging too much and print the dependency
+# tree for debugging
 RUN npm --quiet set progress=false \
     && npm install --omit=dev --omit=optional \
     && echo "Installed NPM packages:" \
@@ -38,8 +40,12 @@ RUN npm --quiet set progress=false \
     && echo "NPM version:" \
     && npm --version
 
-# Expose the application port
-EXPOSE 8000
+# Next, copy the remaining files and directories with the source code.
+# Since we do this after NPM install, quick build will be really fast
+# for most source file changes.
+COPY . ./
 
-# Start the application in production mode
-CMD ["npm", "run", "start:prod", "--silent"]
+
+# Run the image.
+EXPOSE 8000
+CMD npm run start:prod --silent
