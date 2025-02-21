@@ -3,7 +3,6 @@ FROM apify/actor-node:20 AS builder
 
 # Copy package files to leverage Docker cache and install production dependencies
 COPY package*.json ./
-COPY tsconfig.json ./
 RUN npm ci --omit=dev --audit=false
 
 # Copy source files and build the project
