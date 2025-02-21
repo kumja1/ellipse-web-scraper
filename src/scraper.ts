@@ -14,26 +14,19 @@ export async function scrapeSchools(divisionCode: number) {
     log.setLevel(LogLevel.DEBUG);
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
-    // Configure proxy settings
     const proxyConfiguration = new ProxyConfiguration({
          proxyUrls:[
-            'http://45.94.47.18:8110',   // Netherlands - Verified working
-            'http://38.154.241.226:8888', // USA - Residential
-            'http://20.210.113.32:8123',  // Azure Cloud
-            'http://103.174.45.58:8080',  // Indonesia
-            'http://8.219.97.248:80',     // Singapore
-            'http://154.236.189.24:1976', // Egypt
-            'http://194.31.55.34:3128',   // Germany
-            'http://200.105.215.18:33630' // Colombia
+            'http://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80'
         ],
     });
     log.debug('Proxy configuration initialized.');
 
     // Initialize the crawler
     const crawler = new CheerioCrawler({
+        useSessionPool:true,
         proxyConfiguration,
         retryOnBlocked: true,
-        maxRequestRetries: 3,
+        maxRequestRetries: 5,
         maxConcurrency: 8,
         maxRequestsPerMinute: 120,
         async requestHandler({ $, request, enqueueLinks }) {
