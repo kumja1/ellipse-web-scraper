@@ -1,27 +1,32 @@
-# Use the official Apify Node.js base image
-FROM apify/actor-node:20
+# Stage 1: Build Stage
+FROM apify/actor-node:20 AS build
 
-# Set the working directory inside the container
-WORKDIR /app
+
+
+# Copy package files and install dependencies using npm
+COPY package.json ./
+RUN npm install
+
+# Copy the rest of the application code and build
+COPY . .
+RUN npm run build
+
+# Stage 2: Production Stage
+FROM apify/actor-node:20
 
 # Install Bun globally
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 
-# Copy package.json and bun.lockb to leverage Docker layer caching
-COPY package.json bun.lockb ./
+# Copy built files and necessary assets from the build stage
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/package.json ./package.json
 
-# Install dependencies using Bun
-RUN bun install --frozen-lockfile
+# Install production dependencies using Bun
+RUN bun install --production --frozen-lockfile
 
-# Copy the rest of your application code
-COPY . .
-
-# Build the project using Bun
-RUN bun run build
-
-# Expose the port your application will run on
+# Expose the application port
 EXPOSE 8000
 
-# Define the command to run your application
+# Define the command to run the application
 CMD ["bun", "run", "start:prod"]
