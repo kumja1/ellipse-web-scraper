@@ -16,16 +16,15 @@ export async function scrapeSchools(divisionCode: number) {
 
     // Configure proxy settings
     const proxyConfiguration = new ProxyConfiguration({
-        proxyUrls: [
-            'http://150.136.247.129:1080',
-            'http://173.208.246.194:40000',
-            'http://45.180.16.212:9292',
-            'http://51.68.175.56:1080',
-            'http://89.116.27.24:8888',
-            'http://113.160.133.32:8080',
-            'http://216.229.112.25:8080',
-            'http://138.91.159.185:80',
-            'http://23.247.137.142:80'
+         proxyUrls:[
+            'http://45.94.47.18:8110',   // Netherlands - Verified working
+            'http://38.154.241.226:8888', // USA - Residential
+            'http://20.210.113.32:8123',  // Azure Cloud
+            'http://103.174.45.58:8080',  // Indonesia
+            'http://8.219.97.248:80',     // Singapore
+            'http://154.236.189.24:1976', // Egypt
+            'http://194.31.55.34:3128',   // Germany
+            'http://200.105.215.18:33630' // Colombia
         ],
     });
     log.debug('Proxy configuration initialized.');
