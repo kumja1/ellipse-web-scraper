@@ -1,4 +1,5 @@
-import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel } from 'crawlee';
+import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, LoadedRequest } from 'crawlee';
+import type { CheerioCrawlingContext } from 'crawlee';
 
 interface SchoolData {
     name: string;
@@ -12,6 +13,7 @@ export async function scrapeSchools(divisionCode: number) {
     log.setLevel(LogLevel.DEBUG);
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
+    // 1. Fixed proxy configuration
     const proxyConfiguration = new ProxyConfiguration({
         tieredProxyUrls: [
             [null],
@@ -28,14 +30,18 @@ export async function scrapeSchools(divisionCode: number) {
             },
         },
         retryOnBlocked: true,
-        minConcurrency: 8,
+        maxConcurrency: 8,
         maxRequestsPerMinute: 60,
         maxRequestRetries: 10,
         requestHandlerTimeoutSecs: 60,
         additionalMimeTypes: ['text/html'],
         preNavigationHooks: [
             async ({ request, session }) => {
-                if (request.retryCount > 0) session?.retire();
+                log.debug(`Starting request to ${request.url} (retry ${request.retryCount})`);
+                if (request.retryCount > 0) {
+                    log.debug(`Retiring session for ${request.url}`);
+                    session?.retire();
+                }
 
                 request.headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -44,9 +50,20 @@ export async function scrapeSchools(divisionCode: number) {
                 };
             }
         ],
-        async requestHandler({ $, request, enqueueLinks }) {
+        async requestHandler({ $, request, enqueueLinks, log }) {
+            log.debug(`Processing ${request.url} (label: ${request.label})`);
+
             if (request.label === 'DETAIL') {
-                const address = $("span[itemprop='address']").text().trim();
+                log.debug(`Processing detail page: ${request.url}`);
+                const addressElement = $("span[itemprop='address']");
+
+                if (addressElement.length === 0) {
+                    log.warning(`No address element found, page HTML: ${$.html()}`);
+                }
+
+                const address = addressElement.text().trim();
+                log.debug(`Extracted address: ${address}`);
+
                 await Dataset.pushData({
                     ...request.userData.schoolInfo,
                     address: address || 'Address not found',
@@ -55,14 +72,29 @@ export async function scrapeSchools(divisionCode: number) {
                 return;
             }
 
+            log.debug(`List page HTML:\n${$.html()}`);
+
             const rows = $('table tbody tr');
-            const schoolLinks = rows.map((_, row) => {
+            log.debug(`Found ${rows.length} rows in table`);
+
+            const schoolLinks = rows.map((i, row) => {
                 const $row = $(row);
                 const nameLink = $row.find('td:first-child a');
-                // 3. Convert to absolute URL
+
+                // Debug row structure
+                if (nameLink.length === 0) {
+                    log.error(`No school link found in row ${i} HTML:\n${$row.html()}`);
+                    return null;
+                }
+
                 const relativeLink = nameLink.attr('href');
-                if (!relativeLink) return null;
+                if (!relativeLink) {
+                    log.error(`Missing href in row ${i} HTML:\n${$row.html()}`);
+                    return null;
+                }
+
                 const absoluteLink = new URL(relativeLink, request.loadedUrl).toString();
+                log.debug(`Processed school link: ${absoluteLink}`);
 
                 return {
                     url: absoluteLink,
@@ -76,34 +108,54 @@ export async function scrapeSchools(divisionCode: number) {
                 };
             }).get().filter(Boolean);
 
-            // 4. Improved pagination handling
-            const paginationLinks = $('div.pagination a.page-numbers:not(.current)');
+            log.debug(`Found ${schoolLinks.length} valid school links`);
+
+            const paginationLinks = $('div.pagination a.page-numbers:not(.current):not(.next)');
+            log.debug(`Found ${paginationLinks.length} pagination links`);
+
             const totalPages = paginationLinks.length > 0
-                ? Math.max(...paginationLinks.map((_, el) =>
-                    Number($(el).text().trim())))
+                ? Math.max(...paginationLinks.map((_, el) => {
+                    const text = $(el).text().trim();
+                    const num = Number(text);
+                    log.debug(`Pagination link text: "${text}" → ${num}`);
+                    return num;
+                }).get())
                 : 1;
 
-            await enqueueLinks({
-                urls: schoolLinks.map(link => link.url),
-                label: 'DETAIL',
-                transformRequestFunction: (req) => {
-                    const match = schoolLinks.find(sl => sl.url === req.url);
-                    if (match) req.userData = {
-                        divisionCode: request.userData.divisionCode,
-                        schoolInfo: match.userData.schoolInfo
-                    };
-                    return req;
-                }
-            });
+            log.debug(`Calculated total pages: ${totalPages}`);
+
+            if (schoolLinks.length > 0) {
+                log.debug(`Enqueueing ${schoolLinks.length} detail pages`);
+                await enqueueLinks({
+                    urls: schoolLinks.map(link => link.url),
+                    label: 'DETAIL',
+                    transformRequestFunction: (req) => {
+                        const match = schoolLinks.find(sl => sl.url === req.url);
+                        if (!match) {
+                            log.error(`No matching school info for ${req.url}`);
+                        } else {
+                            log.debug(`Matched school info for ${req.url}`);
+                        }
+                        req.userData = match?.userData || {};
+                        return req;
+                    }
+                });
+            } else {
+                log.error('No school links found to enqueue');
+            }
 
             const currentPage = request.userData.page;
-            if (currentPage <= totalPages) {
+            log.debug(`Current page: ${currentPage}, Total pages: ${totalPages}`);
+
+            if (currentPage < totalPages) {
                 const nextPage = currentPage + 1;
                 const nextUrl = new URL(request.url);
 
                 nextUrl.pathname = nextUrl.pathname
                     .replace(/\/page\/\d+$/, '')
                     .replace(/\/$/, '') + `/page/${nextPage}`;
+
+                log.debug(`Next page URL: ${nextUrl.toString()}`);
 
                 await enqueueLinks({
                     urls: [nextUrl.toString()],
@@ -113,15 +165,30 @@ export async function scrapeSchools(divisionCode: number) {
                         page: nextPage
                     }
                 });
+            } else {
+                log.debug('Reached last page of results');
             }
+        },
+        failedRequestHandler(context: CheerioCrawlingContext<any, any>) {
+            const { request } = context;
+            const error = (context as any).error;
+            log.error(`Request ${request.url} failed`, error);
         }
+        
     });
 
+    const startUrl = `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`;
+    log.debug(`Starting crawl with initial URL: ${startUrl}`);
+
     await crawler.run([{
-        url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
+        url: startUrl,
         label: 'LIST',
         userData: { divisionCode, page: 1 }
     }]);
 
-    return Dataset.getData<SchoolData>();
+    const data = await Dataset.getData<SchoolData>();
+    log.debug(`Scraping completed. Retrieved ${data.items.length} items`);
+    console.log('Sample items:', data.items.slice(0, 3));
+
+    return data;
 }
