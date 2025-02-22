@@ -1,7 +1,7 @@
 import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, KeyValueStore, type CheerioCrawlingContext } from 'crawlee';
 import { CheerioAPI, load } from "cheerio"
 import { languages, referers, userAgents } from "./lists.js";
-import { createHash } from 'crypto';
+import { sha, sleep, fetch } from 'bun';
 
 interface SchoolData {
     name: string;
@@ -48,20 +48,19 @@ export async function scrapeSchools(divisionCode: number) {
         proxyConfiguration,
         sessionPoolOptions: {
             sessionOptions: {
-                maxUsageCount: 3,
+                maxUsageCount: 10,
             },
             persistStateKeyValueStoreId: 'session-pool',
         },
         retryOnBlocked: true,
-        maxConcurrency: 20,
-        maxRequestsPerMinute: 160,
-        maxRequestRetries: 3,
-        requestHandlerTimeoutSecs: 20,
+        maxConcurrency: 25,
+        maxRequestsPerMinute: 450,
         autoscaledPoolOptions: {
-            desiredConcurrency: 2,
-            scaleUpStepRatio: 0.2,
+            desiredConcurrency: 10,
+            maxConcurrency: 30,
+            scaleUpStepRatio: 0.5,
             systemStatusOptions: {
-                maxMemoryOverloadedRatio: 0.7
+                maxMemoryOverloadedRatio: 0.8
             }
         },
         preNavigationHooks: [
@@ -70,7 +69,7 @@ export async function scrapeSchools(divisionCode: number) {
                     log.warning(`Retiring session for ${request.url}`);
                     session?.retire();
                 }
-                await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
+                await sleep(Math.random() * 1000)
             }
         ],
         async requestHandler({ $, request, enqueueLinks }) {
@@ -123,11 +122,10 @@ async function handleDetailPage($: CheerioCrawlingContext['$'], request: any, da
 }
 
 async function handleListPage($: CheerioCrawlingContext['$'], request: any, enqueueLinks: CheerioCrawlingContext['enqueueLinks']) {
-    const schoolLinks = $(SCHOOL_TABLE_SELECTOR)
-        .find('tbody tr')
+    const schoolLinks = $(SCHOOL_TABLE_SELECTOR + 'tbody tr')
         .map((_, row) => {
             const $row = $(row);
-            const link = $row.find('td:first-child a').attr('href');
+            const link = $row.find('td:eq(0) a').attr('href');
 
             return link ? {
                 url: new URL(link, request.loadedUrl).toString(),
@@ -191,14 +189,12 @@ export function getRandomHeader() {
     };
 }
 
-const hashSite = ($: CheerioAPI): string =>
-    createHash("sha256")
-        .update(($(SCHOOL_TABLE_SELECTOR).html() + $(PAGINATION_SELECTOR).html()!)
-            .replace(/\s+/g, ' ')         // Collapse whitespace
-            .replace(/<!--.*?-->/gs, '')   // Remove comments
-            .replace(/\s*</g, '<')         // Trim whitespace before tags
-            .replace(/>\s*/g, '>')         // Trim whitespace after tags
-            .replace(/"\s+/g, '"')         // Clean attribute spacing
-            .replace(/\s+"/g, '"')
-            .toLowerCase())
-        .digest("hex")
+
+const hashSite = ($: CheerioAPI): string => sha(($(SCHOOL_TABLE_SELECTOR).html() + $(PAGINATION_SELECTOR).html()!)
+    .replace(/\s+/g, ' ')         // Collapse whitespace
+    .replace(/<!--.*?-->/gs, '')   // Remove comments
+    .replace(/\s*</g, '<')         // Trim whitespace before tags
+    .replace(/>\s*/g, '>')         // Trim whitespace after tags
+    .replace(/"\s+/g, '"')         // Clean attribute spacing
+    .replace(/\s+"/g, '"')
+    .toLowerCase(), "hex")
