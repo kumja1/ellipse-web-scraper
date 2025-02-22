@@ -32,14 +32,13 @@ export async function scrapeSchools(divisionCode: number) {
         },
         retryOnBlocked: true,
         maxConcurrency: 25,
-        maxRequestsPerMinute: 300,
-        maxRequestRetries: 3,
-        requestHandlerTimeoutSecs: 30,
-        additionalMimeTypes: ['text/html'],
+        maxRequestsPerMinute: 300,  
+        maxRequestRetries: 2,      
+        requestHandlerTimeoutSecs: 25,
         autoscaledPoolOptions: {
-            maxTasksPerMinute: 450,
-            desiredConcurrency: 0.95,
-            scaleUpStepRatio: 0.25,
+            desiredConcurrency: 5,
+            scaleUpStepRatio: 0.3,
+            scaleDownStepRatio: 0.1,
         },
         preNavigationHooks: [
             async ({ request, session }) => {
