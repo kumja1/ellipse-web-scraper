@@ -10,9 +10,7 @@ COPY . .
 
 # Stage 2: Production Stage
 FROM oven/bun:1
-
-
-COPY --from=build /usr/src/app/src ./src
+COPY --from=build ./src ./src
 COPY package*.json ./
 RUN bun install --production --frozen-lockfile
 
