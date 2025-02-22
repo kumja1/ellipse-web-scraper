@@ -31,13 +31,13 @@ export async function scrapeSchools(divisionCode: number) {
         },
         retryOnBlocked: true,
         minConcurrency: 8,
-        maxRequestsPerMinute: 120,
+        maxRequestsPerMinute: 60,
         maxRequestRetries: 10,
         requestHandlerTimeoutSecs: 60,
         additionalMimeTypes: ['text/html'],
         preNavigationHooks: [
             async ({ request, session, proxyInfo }) => {
-                session?.retire();
+                if (request.retryCount > 0) session?.retire();
                 request.headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
@@ -54,7 +54,6 @@ export async function scrapeSchools(divisionCode: number) {
         ],
         async requestHandler({ $, request, enqueueLinks }) {
             log.debug(`Processing ${request.url} with label: ${request.label}`);
-
             if (request.label === 'DETAIL') {
                 const address = $("span[itemprop='address']").text().trim();
                 log.debug(`Extracted address: ${address}`);
@@ -68,27 +67,35 @@ export async function scrapeSchools(divisionCode: number) {
             }
 
             const rows = $('table tbody tr');
-            log.debug(`Found ${rows.length} rows in the table.`);
+            log.debug(`Found ${rows.length} rows`);
 
             const schoolLinks = rows.map((_, row) => {
-                const cells = $(row).find('td');
-                const nameInfo = cells.eq(0).find('a');
-                const link = nameInfo.attr('href');
-                const name = nameInfo.text()
-                const division = cells.eq(1).text().trim();
-                const gradeSpan = cells.eq(2).text().trim();
-                log.debug(`Extracted school: ${name}, Division: ${division}, Grade Span: ${gradeSpan}, Link: ${link}`);
+                const $row = $(row);
+                const nameLink = $row.find('td:first-child a');
+                if (!nameLink.length) {
+                    log.error('No school link found in row');
+                    return null;
+                }
+
+                const name = nameLink.text().trim();
+                const link = nameLink.attr('href');
+
+                if (!link || !name) {
+                    log.error('Missing required fields', { name, link });
+                    return null;
+                }
+                const division = $row.find('td:nth-child(2)').text().trim();
+                const gradeSpan = $row.find('td:nth-child(3)').text().trim();
+
+                log.debug(`Valid school: ${name} | ${division} | ${gradeSpan}`);
+
                 return {
                     url: link,
                     userData: {
-                        schoolInfo: {
-                            name,
-                            division,
-                            gradeSpan,
-                        }
+                        schoolInfo: { name, division, gradeSpan }
                     }
                 };
-            }).get();
+            }).get().filter(Boolean);
 
             const totalPages = Number(
                 $('div.pagination a.page-numbers:not(.current):not(.next)')
@@ -140,7 +147,7 @@ export async function scrapeSchools(divisionCode: number) {
                 log.debug(`Enqueued next page: ${nextPage}`);
             }
         }
-    });
+    })
 
     await crawler.run([{
         url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
