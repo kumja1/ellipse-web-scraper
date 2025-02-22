@@ -2,8 +2,8 @@
 FROM oven/bun:1 AS build
 
 # Copy package files and install dependencies using Bun
-COPY package.json ./
-RUN bun install --frozen-lockfile
+COPY package*.json ./
+RUN bun install  --include=dev --audit=false
 
 # Copy the rest of the application code
 COPY . .
@@ -11,9 +11,11 @@ COPY . .
 # Stage 2: Production Stage
 FROM oven/bun:1
 
-COPY --from=build /app/src ./src
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
+
+COPY --from=build /usr/src/app/src ./src
+COPY package*.json ./
+RUN bun install --production --frozen-lockfile
+
 
 # Expose the application port
 EXPOSE 8000
