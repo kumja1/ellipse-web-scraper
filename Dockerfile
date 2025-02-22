@@ -1,21 +1,32 @@
 # Stage 1: Build Stage
-FROM oven/bun:1 AS build
+FROM oven/bun:1 as builder
 
-# Copy package files and install dependencies using Bun
+WORKDIR /app
+
+# Copy package files first to leverage Docker cache
 COPY package*.json ./
-RUN bun install  --include=dev --audit=false
 
-# Copy the rest of the application code
-COPY . ./src
+# Install all dependencies including dev dependencies
+RUN bun install --frozen-lockfile
+
+# Copy application source
+COPY . .
 
 # Stage 2: Production Stage
-FROM oven/bun:1
-COPY --from=build ./src ./src
-COPY package*.json ./
-RUN bun install --production --frozen-lockfile
+FROM oven/bun:1-slim
 
+WORKDIR /app
 
-# Expose the application port
+# Copy production dependencies and built application
+COPY --from=builder /app/node_modules node_modules
+COPY --from=builder /app/package*.json .
+COPY --from=builder /app/src src
+
+# Run as non-root user for security
+USER bun
+
+# Expose application port
 EXPOSE 8000
 
-CMD ["bun", "run", "start:prod"]
+# Start command
+CMD ["bun", "run", "src/server.ts"]
