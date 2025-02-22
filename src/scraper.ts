@@ -1,5 +1,6 @@
 import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, LoadedRequest } from 'crawlee';
 import type { CheerioCrawlingContext } from 'crawlee';
+import { languages, referers, userAgents } from "./lists.js"
 
 interface SchoolData {
     name: string;
@@ -13,7 +14,6 @@ export async function scrapeSchools(divisionCode: number) {
     log.setLevel(LogLevel.DEBUG);
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
-    // 1. Fixed proxy configuration
     const proxyConfiguration = new ProxyConfiguration({
         tieredProxyUrls: [
             [null],
@@ -26,15 +26,21 @@ export async function scrapeSchools(divisionCode: number) {
         proxyConfiguration,
         sessionPoolOptions: {
             sessionOptions: {
-                maxUsageCount: 3,
+                maxUsageCount: 5,
             },
+            persistStateKeyValueStoreId: 'session-pool',
         },
         retryOnBlocked: true,
-        minConcurrency: 15,
-        maxRequestsPerMinute: 150,
-        maxRequestRetries: 10,
-        requestHandlerTimeoutSecs: 60,
+        maxConcurrency: 25,
+        maxRequestsPerMinute: 300,
+        maxRequestRetries: 3,
+        requestHandlerTimeoutSecs: 30,
         additionalMimeTypes: ['text/html'],
+        autoscaledPoolOptions: {
+            maxTasksPerMinute: 450,
+            desiredConcurrency: 0.95,
+            scaleUpStepRatio: 0.25,
+        },
         preNavigationHooks: [
             async ({ request, session }) => {
                 log.debug(`Starting request to ${request.url} (retry ${request.retryCount})`);
@@ -43,10 +49,14 @@ export async function scrapeSchools(divisionCode: number) {
                     session?.retire();
                 }
 
+                const headers = getRandomHeader()
                 request.headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    ...request.headers,
+                    'User-Agent': headers.userAgent,
                     'Accept-Encoding': 'gzip, deflate, br',
-                    'Referer': 'https://www.google.com/',
+                    'Referer': headers.referer,
+                    'Accept-Language': headers.language
+
                 };
             }
         ],
@@ -73,11 +83,11 @@ export async function scrapeSchools(divisionCode: number) {
             }
 
 
-           //  log.debug(`List page HTML:\n${$.html()}`);
+            //  log.debug(`List page HTML:\n${$.html()}`);
 
-           const rows = $('table thead th:contains("School")')
-           .closest('table')
-           .find('tbody tr');            
+            const rows = $('table thead th:contains("School")')
+                .closest('table')
+                .find('tbody tr');
             log.debug(`Found ${rows.length} rows in table`);
 
             const schoolLinks = rows.map((i, row) => {
@@ -177,7 +187,7 @@ export async function scrapeSchools(divisionCode: number) {
             const error = (context as any).error;
             log.error(`Request ${request.url} failed`, error);
         }
-        
+
     });
 
     const startUrl = `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`;
@@ -194,4 +204,16 @@ export async function scrapeSchools(divisionCode: number) {
     console.log('Sample items:', data.items.slice(0, 3));
 
     return data;
+}
+
+export function getRandomHeader() {
+    const rand = Math.random();
+    const deviceType = rand < 0.8 ? 'desktop' : rand < 0.95 ? 'mobile' : 'bot';
+    return {
+        userAgent: userAgents[deviceType][Math.floor(Math.random() * userAgents[deviceType].length)],
+        referer: deviceType === 'bot'
+            ? 'https://www.google.com/'
+            : referers[Math.floor(Math.random() * referers.length)],
+        language: languages[Math.floor(Math.random() * languages.length)]
+    };
 }
