@@ -72,8 +72,9 @@ export async function scrapeSchools(divisionCode: number) {
 
             const schoolLinks = rows.map((_, row) => {
                 const cells = $(row).find('td');
-                const link = $(cells.eq(0)).find('a').attr('href');
-                const name = cells.eq(0).text().trim();
+                const nameInfo = cells.eq(0).find('a');
+                const link = nameInfo.attr('href');
+                const name = nameInfo.text()
                 const division = cells.eq(1).text().trim();
                 const gradeSpan = cells.eq(2).text().trim();
                 log.debug(`Extracted school: ${name}, Division: ${division}, Grade Span: ${gradeSpan}, Link: ${link}`);
