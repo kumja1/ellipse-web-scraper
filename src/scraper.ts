@@ -32,8 +32,8 @@ export async function scrapeSchools(divisionCode: number) {
         },
         retryOnBlocked: true,
         maxConcurrency: 20,
-        maxRequestsPerMinute: 240,  
-        maxRequestRetries: 2,      
+        maxRequestsPerMinute: 240,
+        maxRequestRetries: 2,
         requestHandlerTimeoutSecs: 25,
         autoscaledPoolOptions: {
             desiredConcurrency: 5,
@@ -121,17 +121,11 @@ export async function scrapeSchools(divisionCode: number) {
 
             log.debug(`Found ${schoolLinks.length} valid school links`);
 
-            const paginationLinks = $('div.pagination a.page-numbers:not(.current):not(.next)').first()
+            const paginationLinks = $('div.pagination a.page-numbers:not(.current):not(.next)')
             log.debug(`Found ${paginationLinks.length} pagination links`);
 
-            const totalPages = paginationLinks.length > 0
-                ? Math.max(...paginationLinks.map((_, el) => {
-                    const text = $(el).text().trim();
-                    const num = Number(text);
-                    log.debug(`Pagination link text: "${text}" → ${num}`);
-                    return num;
-                }).get())
-                : 1;
+            const totalPages = Number(paginationLinks.last().text());
+
 
             log.debug(`Calculated total pages: ${totalPages}`);
 
