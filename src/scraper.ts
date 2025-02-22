@@ -97,7 +97,7 @@ export async function scrapeSchools(divisionCode: number) {
             });
 
             const currentPage = request.userData.page;
-            if (currentPage < totalPages) {
+            if (currentPage <= totalPages) {
                 const nextPage = currentPage + 1;
                 const nextUrl = new URL(request.url);
 
