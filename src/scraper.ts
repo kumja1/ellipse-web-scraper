@@ -1,4 +1,4 @@
-import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, KeyValueStore, type CheerioCrawlingContext } from 'crawlee';
+import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, KeyValueStore, type CheerioCrawlingContext, StorageManager, purgeDefaultStorages } from 'crawlee';
 import { CheerioAPI, load } from "cheerio"
 import { languages, referers, userAgents } from "./lists.js";
 import { sha, sleep, fetch } from 'bun';
@@ -29,13 +29,13 @@ export async function scrapeSchools(divisionCode: number, forceRefresh = false) 
         log.info('Using valid cached data');
         return cachedData.data;
     }
-    const TIME_STAMP = Date.now();
+
     const { hash: currentHash } = await fetchPageContent(divisionCode);
     if (cachedData?.hash === currentHash) {
         log.info('Content unchanged, updating timestamp');
         await KeyValueStore.setValue(CACHE_KEY, {
             ...cachedData,
-            timestamp: TIME_STAMP
+            timestamp: Date.now()
         });
         return cachedData.data;
     }
@@ -48,16 +48,14 @@ export async function scrapeSchools(divisionCode: number, forceRefresh = false) 
         });
     }
 
-    const tempDatasetName = `temp-${CACHE_KEY}-${Date.now()}`;
-    const dataset = await Dataset.open(tempDatasetName);
     try {
         await activeCrawler.run([{
             url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
             label: 'LIST',
-            userData: { divisionCode, page: 1, tempDatasetName }
+            userData: { divisionCode, page: 1 }
         }]);
 
-        const data = (await dataset.getData()).items as unknown as SchoolData[]
+        const data = (await Dataset.getData<SchoolData>()).items;
 
         await KeyValueStore.setValue(CACHE_KEY, {
             hash: currentHash,
@@ -69,13 +67,7 @@ export async function scrapeSchools(divisionCode: number, forceRefresh = false) 
     } catch (error) {
         log.error(`Scraper failed:`, error as any)
     } finally {
-        if (dataset) {
-            try {
-                await dataset.drop();
-            } catch (error) {
-                log.warning('Failed to drop dataset', error as any);
-            }
-        }
+        await purgeDefaultStorages()
     }
 }
 
@@ -118,11 +110,10 @@ function createCrawler() {
         }],
         async requestHandler({ $, request, enqueueLinks }) {
             try {
-                const { tempDatasetName, divisionCode, page } = request.userData;
-                const dataset = await Dataset.open(tempDatasetName);
+                const { divisionCode, page } = request.userData;
                 if (request.label === 'DETAIL') {
                     const address = $("span[itemprop='address']").text().trim() || 'Address not found';
-                    await dataset.pushData({
+                    await Dataset.pushData({
                         ...request.userData.schoolInfo,
                         address,
                         divisionCode
