@@ -74,7 +74,9 @@ export async function scrapeSchools(divisionCode: number) {
 
            //  log.debug(`List page HTML:\n${$.html()}`);
 
-            const rows = $('table tbody tr').first()
+           const rows = $('table thead th:contains("School")')
+           .closest('table')
+           .find('tbody tr');            
             log.debug(`Found ${rows.length} rows in table`);
 
             const schoolLinks = rows.map((i, row) => {
