@@ -4,16 +4,17 @@
     "type": "module",
     "description": "Webscraper for the Ellipse Site Finder",
     "dependencies": {
+        "cheerio": "^1.0.0",
         "crawlee": "^3.0.0",
         "https-proxy-agent": "^7.0.6"
     },
     "devDependencies": {
         "@apify/tsconfig": "^0.1.0",
         "@types/axios": "^0.14.4",
+        "@types/bun": "^1.2.2",
         "@types/cors": "^2.8.17",
         "@types/express": "^5.0.0",
         "@types/node": "^22.0.0",
-        "@types/bun": "^1.2.2",
         "nodemon": "^3.1.9",
         "tsx": "^4.4.0"
     },

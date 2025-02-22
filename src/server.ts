@@ -1,7 +1,6 @@
 import { scrapeSchools } from './scraper.js';
 
 
-
 async function handleRequest(req: Request) {
 
     let response: Response | null = null;
@@ -13,7 +12,7 @@ async function handleRequest(req: Request) {
             const results = await scrapeSchools(divisionCode);
             response = Response.json({
                 divisionCode,
-                schools: results.items,
+                schools: results,
 
             });
         } catch (error: any) {
