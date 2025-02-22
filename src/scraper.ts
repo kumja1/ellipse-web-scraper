@@ -58,7 +58,7 @@ export async function scrapeSchools(divisionCode: number) {
                 const addressElement = $("span[itemprop='address']");
 
                 if (addressElement.length === 0) {
-                    // log.warning(`No address element found, page HTML: ${$.html()}`);
+                    log.warning(`No address element found on ${request.url}`);
                 }
 
                 const address = addressElement.text().trim();
@@ -71,6 +71,7 @@ export async function scrapeSchools(divisionCode: number) {
                 });
                 return;
             }
+
 
            //  log.debug(`List page HTML:\n${$.html()}`);
 
@@ -138,6 +139,7 @@ export async function scrapeSchools(divisionCode: number) {
                             log.debug(`Matched school info for ${req.url}`);
                         }
                         req.userData = match?.userData || {};
+                        req.label = 'DETAIL'; // Explicitly set the label
                         return req;
                     }
                 });
@@ -148,7 +150,7 @@ export async function scrapeSchools(divisionCode: number) {
             const currentPage = request.userData.page;
             log.debug(`Current page: ${currentPage}, Total pages: ${totalPages}`);
 
-            if (currentPage <= totalPages) {
+            if (currentPage < totalPages) {
                 const nextPage = currentPage + 1;
                 const nextUrl = new URL(request.url);
 
