@@ -57,7 +57,7 @@ export async function scrapeSchools(divisionCode: number, forceRefresh = false) 
             userData: { divisionCode, page: 1, tempDatasetName }
         }]);
 
-        const data = (await dataset.getData()).items as unknown as SchoolData
+        const data = (await dataset.getData()).items as unknown as SchoolData[]
 
         await KeyValueStore.setValue(CACHE_KEY, {
             hash: currentHash,
