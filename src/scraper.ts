@@ -101,9 +101,15 @@ export async function scrapeSchools(divisionCode: number) {
                 urls: schoolLinks.map(link => <string>link.url),
                 label: 'DETAIL',
                 forefront: true,
-                userData: {
-                    divisionCode: request.userData.divisionCode,
-                    schoolInfo: schoolLinks[0]?.userData.schoolInfo
+                transformRequestFunction: (req) => {
+                    const matchingLink = schoolLinks.find(sl => sl.url === req.url);
+                    if (matchingLink) {
+                        req.userData = {
+                            divisionCode: request.userData.divisionCode,
+                            schoolInfo: matchingLink.userData.schoolInfo
+                        };
+                    }
+                    return req;
                 }
             });
             log.debug('Enqueued detail pages for schools.');
