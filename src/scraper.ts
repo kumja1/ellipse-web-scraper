@@ -31,8 +31,8 @@ export async function scrapeSchools(divisionCode: number) {
             persistStateKeyValueStoreId: 'session-pool',
         },
         retryOnBlocked: true,
-        maxConcurrency: 25,
-        maxRequestsPerMinute: 300,  
+        maxConcurrency: 20,
+        maxRequestsPerMinute: 240,  
         maxRequestRetries: 2,      
         requestHandlerTimeoutSecs: 25,
         autoscaledPoolOptions: {
