@@ -58,7 +58,7 @@ export async function scrapeSchools(divisionCode: number) {
                 const addressElement = $("span[itemprop='address']");
 
                 if (addressElement.length === 0) {
-                    log.warning(`No address element found, page HTML: ${$.html()}`);
+                    // log.warning(`No address element found, page HTML: ${$.html()}`);
                 }
 
                 const address = addressElement.text().trim();
@@ -74,14 +74,13 @@ export async function scrapeSchools(divisionCode: number) {
 
             log.debug(`List page HTML:\n${$.html()}`);
 
-            const rows = $('table tbody tr');
+            const rows = $('table tbody tr').first()
             log.debug(`Found ${rows.length} rows in table`);
 
             const schoolLinks = rows.map((i, row) => {
                 const $row = $(row);
                 const nameLink = $row.find('td:first-child a');
 
-                // Debug row structure
                 if (nameLink.length === 0) {
                     log.error(`No school link found in row ${i} HTML:\n${$row.html()}`);
                     return null;
@@ -110,7 +109,7 @@ export async function scrapeSchools(divisionCode: number) {
 
             log.debug(`Found ${schoolLinks.length} valid school links`);
 
-            const paginationLinks = $('div.pagination a.page-numbers:not(.current):not(.next)');
+            const paginationLinks = $('div.pagination a.page-numbers:not(.current):not(.next)').first()
             log.debug(`Found ${paginationLinks.length} pagination links`);
 
             const totalPages = paginationLinks.length > 0
