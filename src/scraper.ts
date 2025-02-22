@@ -131,6 +131,8 @@ async function handleListPage($: CheerioCrawlingContext['$'], request: any, enqu
     const currentPage = request.userData.page;
     const totalPages = getTotalPages($);
 
+    log.debug(`Total Pages: ${totalPages}`);
+
     if (currentPage < totalPages) {
         const nextUrl = new URL(request.url);
         nextUrl.pathname = nextUrl.pathname.replace(/\/page\/\d+$/, '') + `/page/${currentPage + 1}`;
@@ -148,7 +150,7 @@ async function handleListPage($: CheerioCrawlingContext['$'], request: any, enqu
 
 function getTotalPages($: CheerioCrawlingContext['$']): number {
     try {
-        return parseInt($(PAGINATION_SELECTOR).last().text().trim(), 10) || 1;
+        return Number($(PAGINATION_SELECTOR).last().text().trim()) || 1;
     } catch (error) {
         log.warning('Error parsing total pages, defaulting to 1');
         return 1;
