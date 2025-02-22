@@ -22,9 +22,6 @@ COPY --from=builder /app/node_modules node_modules
 COPY --from=builder /app/package*.json .
 COPY --from=builder /app/src src
 
-# Run as non-root user for security
-USER bun
-
 # Expose application port
 EXPOSE 8000
 
