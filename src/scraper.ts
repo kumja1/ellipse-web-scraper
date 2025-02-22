@@ -13,28 +13,26 @@ export async function scrapeSchools(divisionCode: number) {
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
     const proxyConfiguration = new ProxyConfiguration({
-
-       // proxyUrls: [
-       //     "http://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80/"
-       // ],
-
-
+        tieredProxyUrls: [
+            [null],
+            ["https://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80/"]
+        ],
     });
     log.debug('Proxy configuration initialized.');
 
     // Initialize the crawler
     const crawler = new CheerioCrawler({
         useSessionPool: true,
-        // proxyConfiguration,
+        proxyConfiguration,
         sessionPoolOptions: {
             sessionOptions: {
                 maxUsageCount: 3,
             },
         },
         retryOnBlocked: true,
-        maxConcurrency: 8,
+        minConcurrency: 8,
         maxRequestsPerMinute: 120,
-        maxRequestRetries: 10, 
+        maxRequestRetries: 10,
         requestHandlerTimeoutSecs: 60,
         additionalMimeTypes: ['text/html'],
         preNavigationHooks: [
@@ -48,7 +46,7 @@ export async function scrapeSchools(divisionCode: number) {
                     'Referer': 'https://www.google.com/',
                     'Connection': 'keep-alive',
                 };
-                
+
                 if (proxyInfo) {
                     request.headers['X-Proxy'] = proxyInfo.url;
                 }
