@@ -37,7 +37,7 @@ export async function scrapeSchools(divisionCode: number) {
         additionalMimeTypes: ['text/html'],
         preNavigationHooks: [
             async ({ request, session, proxyInfo }) => {
-                if (request.retryCount > 0) session?.retire();
+                session?.retire();
                 request.headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
@@ -124,7 +124,7 @@ export async function scrapeSchools(divisionCode: number) {
 
             const currentPage = request.userData.page;
             log.debug(`Current page: ${currentPage}`);
-            if (currentPage < totalPages) {
+            if (currentPage <= totalPages) {
                 const nextPage = currentPage + 1;
                 const currentUrl = new URL(request.url);
                 currentUrl.pathname = currentUrl.pathname
