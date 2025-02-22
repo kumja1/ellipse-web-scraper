@@ -117,7 +117,7 @@ export async function scrapeSchools(divisionCode: number) {
 
             const currentPage = request.userData.page;
             log.debug(`Current page: ${currentPage}`);
-            if (currentPage <= totalPages) {
+            if (currentPage < totalPages) {
                 const nextPage = currentPage + 1;
                 const currentUrl = new URL(request.url);
                 currentUrl.pathname = currentUrl.pathname
