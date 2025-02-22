@@ -8,9 +8,6 @@ RUN bun install --frozen-lockfile
 # Copy the rest of the application code
 COPY . .
 
-# Build the application (if needed)
-RUN bun run build
-
 # Stage 2: Production Stage
 FROM oven/bun:1
 
