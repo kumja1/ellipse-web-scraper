@@ -13,14 +13,11 @@ export async function scrapeSchools(divisionCode: number) {
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
     const proxyConfiguration = new ProxyConfiguration({
-        tieredProxyUrls: [
-            [null],
-            ["https://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80/"]
-        ],
+        proxyUrls: [
+            "http://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80"
+        ]
     });
-    log.debug('Proxy configuration initialized.');
 
-    // Initialize the crawler
     const crawler = new CheerioCrawler({
         useSessionPool: true,
         proxyConfiguration,
@@ -36,127 +33,94 @@ export async function scrapeSchools(divisionCode: number) {
         requestHandlerTimeoutSecs: 60,
         additionalMimeTypes: ['text/html'],
         preNavigationHooks: [
-            async ({ request, session, proxyInfo }) => {
-                session?.retire();
+            async ({ request, session }) => {
+                if (request.retryCount > 0) session?.retire();
+
                 request.headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
                     'Accept-Encoding': 'gzip, deflate, br',
-                    'Accept-Language': 'en-US,en;q=0.9',
                     'Referer': 'https://www.google.com/',
-                    'Connection': 'keep-alive',
                 };
-
-                if (proxyInfo) {
-                    request.headers['X-Proxy'] = proxyInfo.url;
-                }
             }
         ],
         async requestHandler({ $, request, enqueueLinks }) {
-            log.debug(`Processing ${request.url} with label: ${request.label}`);
             if (request.label === 'DETAIL') {
                 const address = $("span[itemprop='address']").text().trim();
-                log.debug(`Extracted address: ${address}`);
                 await Dataset.pushData({
                     ...request.userData.schoolInfo,
                     address: address || 'Address not found',
                     divisionCode: request.userData.divisionCode
                 });
-                log.debug('School data saved to dataset.');
                 return;
             }
 
             const rows = $('table tbody tr');
-            log.debug(`Found ${rows.length} rows`);
-
             const schoolLinks = rows.map((_, row) => {
                 const $row = $(row);
                 const nameLink = $row.find('td:first-child a');
-                if (!nameLink.length) {
-                    log.error('No school link found in row');
-                    return null;
-                }
-
-                const name = nameLink.text().trim();
-                const link = nameLink.attr('href');
-
-                if (!link || !name) {
-                    log.error('Missing required fields', { name, link });
-                    return null;
-                }
-                const division = $row.find('td:nth-child(2)').text().trim();
-                const gradeSpan = $row.find('td:nth-child(3)').text().trim();
-
-                log.debug(`Valid school: ${name} | ${division} | ${gradeSpan}`);
+                // 3. Convert to absolute URL
+                const relativeLink = nameLink.attr('href');
+                if (!relativeLink) return null;
+                const absoluteLink = new URL(relativeLink, request.loadedUrl).toString();
 
                 return {
-                    url: link,
+                    url: absoluteLink,
                     userData: {
-                        schoolInfo: { name, division, gradeSpan }
+                        schoolInfo: {
+                            name: nameLink.text().trim(),
+                            division: $row.find('td:nth-child(2)').text().trim(),
+                            gradeSpan: $row.find('td:nth-child(3)').text().trim()
+                        }
                     }
                 };
             }).get().filter(Boolean);
 
-            const totalPages = Number(
-                $('div.pagination a.page-numbers:not(.current):not(.next)')
-                    .last()
-                    .text()
-                    .replace(/\D/g, '') || '1'
-            );
-            log.debug(`Total pages found: ${totalPages}`);
+            // 4. Improved pagination handling
+            const paginationLinks = $('div.pagination a.page-numbers:not(.current)');
+            const totalPages = paginationLinks.length > 0
+                ? Math.max(...paginationLinks.map((_, el) =>
+                    Number($(el).text().trim())))
+                : 1;
 
             await enqueueLinks({
-                urls: schoolLinks.map(link => <string>link.url),
+                urls: schoolLinks.map(link => link.url),
                 label: 'DETAIL',
-                forefront: true,
                 transformRequestFunction: (req) => {
-                    const matchingLink = schoolLinks.find(sl => sl.url === req.url);
-                    if (matchingLink) {
-                        req.userData = {
-                            divisionCode: request.userData.divisionCode,
-                            schoolInfo: matchingLink.userData.schoolInfo
-                        };
-                    }
+                    const match = schoolLinks.find(sl => sl.url === req.url);
+                    if (match) req.userData = {
+                        divisionCode: request.userData.divisionCode,
+                        schoolInfo: match.userData.schoolInfo
+                    };
                     return req;
                 }
             });
-            log.debug('Enqueued detail pages for schools.');
 
             const currentPage = request.userData.page;
-            log.debug(`Current page: ${currentPage}`);
-            if (currentPage <= totalPages) {
+            if (currentPage < totalPages) {
                 const nextPage = currentPage + 1;
-                const currentUrl = new URL(request.url);
-                currentUrl.pathname = currentUrl.pathname
-                    .replace(/\/page\/\d+(\/)?$/, '')
-                    .replace(/\/$/, '');
-                log.debug(`Cleaned Url: ${currentUrl.toString()}`)
+                const nextUrl = new URL(request.url);
 
-                currentUrl.pathname += `/page/${nextPage}`;
-                log.debug(`New Url:${currentUrl.toString()}`)
+                nextUrl.pathname = nextUrl.pathname
+                    .replace(/\/page\/\d+$/, '')
+                    .replace(/\/$/, '') + `/page/${nextPage}`;
 
                 await enqueueLinks({
-                    urls: [currentUrl.toString()],
+                    urls: [nextUrl.toString()],
                     label: 'LIST',
                     userData: {
                         divisionCode: request.userData.divisionCode,
                         page: nextPage
-                    },
-
+                    }
                 });
-                log.debug(`Enqueued next page: ${nextPage}`);
             }
         }
-    })
+    });
 
     await crawler.run([{
         url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
         label: 'LIST',
         userData: { divisionCode, page: 1 }
     }]);
-    log.debug('Crawler run completed.');
 
-    const data = await Dataset.getData<SchoolData>();
-    log.debug(`Retrieved ${data.items.length} items from the dataset.`);
-    return data;
+    return Dataset.getData<SchoolData>();
 }
