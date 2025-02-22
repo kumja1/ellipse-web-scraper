@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN bun install  --include=dev --audit=false
 
 # Copy the rest of the application code
-COPY . .
+COPY . ./src
 
 # Stage 2: Production Stage
 FROM oven/bun:1
