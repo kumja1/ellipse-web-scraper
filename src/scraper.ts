@@ -72,7 +72,7 @@ export async function scrapeSchools(divisionCode: number) {
                 return;
             }
 
-            log.debug(`List page HTML:\n${$.html()}`);
+           //  log.debug(`List page HTML:\n${$.html()}`);
 
             const rows = $('table tbody tr').first()
             log.debug(`Found ${rows.length} rows in table`);
