@@ -1,6 +1,6 @@
-import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, LoadedRequest } from 'crawlee';
-import type { CheerioCrawlingContext } from 'crawlee';
-import { languages, referers, userAgents } from "./lists.js"
+import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel } from 'crawlee';
+import type { CheerioCrawlingContext, LoadedRequest } from 'crawlee';
+import { languages, referers, userAgents } from "./lists.js";
 
 interface SchoolData {
     name: string;
@@ -10,9 +10,13 @@ interface SchoolData {
     divisionCode: number;
 }
 
+// Cache expensive operations
+const PAGINATION_SELECTOR = 'div.pagination a.page-numbers:not(.current):not(.next)';
+const SCHOOL_TABLE_SELECTOR = 'table:has(thead th:contains("School"))';
+
 export async function scrapeSchools(divisionCode: number) {
-    log.setLevel(LogLevel.DEBUG);
-    log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
+    log.setLevel(LogLevel.INFO);
+    log.info(`Starting scrapeSchools for division: ${divisionCode}`);
 
     const proxyConfiguration = new ProxyConfiguration({
         tieredProxyUrls: [
@@ -26,187 +30,136 @@ export async function scrapeSchools(divisionCode: number) {
         proxyConfiguration,
         sessionPoolOptions: {
             sessionOptions: {
-                maxUsageCount: 5,
+                maxUsageCount: 3,
             },
             persistStateKeyValueStoreId: 'session-pool',
         },
         retryOnBlocked: true,
-        maxConcurrency: 20,
-        maxRequestsPerMinute: 240,
-        maxRequestRetries: 2,
-        requestHandlerTimeoutSecs: 25,
+        maxConcurrency: 15,
+        maxRequestsPerMinute: 212,
+        maxRequestRetries: 3,
+        requestHandlerTimeoutSecs: 20,
         autoscaledPoolOptions: {
-            desiredConcurrency: 5,
-            scaleUpStepRatio: 0.3,
-            scaleDownStepRatio: 0.1,
+            desiredConcurrency: 2,
+            scaleUpStepRatio: 0.2,
+            systemStatusOptions: {
+                maxMemoryOverloadedRatio: 0.7
+            }
         },
         preNavigationHooks: [
             async ({ request, session }) => {
-                log.debug(`Starting request to ${request.url} (retry ${request.retryCount})`);
                 if (request.retryCount > 0) {
-                    log.debug(`Retiring session for ${request.url}`);
+                    log.warning(`Retiring session for ${request.url}`);
                     session?.retire();
                 }
-
-                const headers = getRandomHeader()
-                request.headers = {
-                    ...request.headers,
-                    'User-Agent': headers.userAgent,
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Referer': headers.referer,
-                    'Accept-Language': headers.language
-
-                };
+                await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
             }
         ],
-        async requestHandler({ $, request, enqueueLinks, log }) {
-            log.debug(`Processing ${request.url} (label: ${request.label})`);
-
-            if (request.label === 'DETAIL') {
-                log.debug(`Processing detail page: ${request.url}`);
-                const addressElement = $("span[itemprop='address']");
-
-                if (addressElement.length === 0) {
-                    log.warning(`No address element found on ${request.url}`);
+        async requestHandler({ $, request, enqueueLinks }) {
+            try {
+                if (request.label === 'DETAIL') {
+                    await handleDetailPage($, request);
+                    return;
                 }
 
-                const address = addressElement.text().trim();
-                log.debug(`Extracted address: ${address}`);
-
-                await Dataset.pushData({
-                    ...request.userData.schoolInfo,
-                    address: address || 'Address not found',
-                    divisionCode: request.userData.divisionCode
-                });
-                return;
-            }
-
-
-            //  log.debug(`List page HTML:\n${$.html()}`);
-
-            const rows = $('table thead th:contains("School")')
-                .closest('table')
-                .find('tbody tr');
-            log.debug(`Found ${rows.length} rows in table`);
-
-            const schoolLinks = rows.map((i, row) => {
-                const $row = $(row);
-                const nameLink = $row.find('td:first-child a');
-
-                if (nameLink.length === 0) {
-                    log.error(`No school link found in row ${i} HTML:\n${$row.html()}`);
-                    return null;
-                }
-
-                const relativeLink = nameLink.attr('href');
-                if (!relativeLink) {
-                    log.error(`Missing href in row ${i} HTML:\n${$row.html()}`);
-                    return null;
-                }
-
-                const absoluteLink = new URL(relativeLink, request.loadedUrl).toString();
-                log.debug(`Processed school link: ${absoluteLink}`);
-
-                return {
-                    url: absoluteLink,
-                    userData: {
-                        schoolInfo: {
-                            name: nameLink.text().trim(),
-                            division: $row.find('td:nth-child(2)').text().trim(),
-                            gradeSpan: $row.find('td:nth-child(3)').text().trim()
-                        }
-                    }
-                };
-            }).get().filter(Boolean);
-
-            log.debug(`Found ${schoolLinks.length} valid school links`);
-
-            const paginationLinks = $('div.pagination a.page-numbers:not(.current):not(.next)')
-            log.debug(`Found ${paginationLinks.length} pagination links`);
-
-            const totalPages = Number(paginationLinks.last().text());
-
-
-            log.debug(`Calculated total pages: ${totalPages}`);
-
-            if (schoolLinks.length > 0) {
-                log.debug(`Enqueueing ${schoolLinks.length} detail pages`);
-                await enqueueLinks({
-                    urls: schoolLinks.map(link => link.url),
-                    label: 'DETAIL',
-                    transformRequestFunction: (req) => {
-                        const match = schoolLinks.find(sl => sl.url === req.url);
-                        if (!match) {
-                            log.error(`No matching school info for ${req.url}`);
-                        } else {
-                            log.debug(`Matched school info for ${req.url}`);
-                        }
-                        req.userData = match?.userData || {};
-                        req.label = 'DETAIL'; // Explicitly set the label
-                        return req;
-                    }
-                });
-            } else {
-                log.error('No school links found to enqueue');
-            }
-
-            const currentPage = request.userData.page;
-            log.debug(`Current page: ${currentPage}, Total pages: ${totalPages}`);
-
-            if (currentPage < totalPages) {
-                const nextPage = currentPage + 1;
-                const nextUrl = new URL(request.url);
-
-                nextUrl.pathname = nextUrl.pathname
-                    .replace(/\/page\/\d+$/, '')
-                    .replace(/\/$/, '') + `/page/${nextPage}`;
-
-                log.debug(`Next page URL: ${nextUrl.toString()}`);
-
-                await enqueueLinks({
-                    urls: [nextUrl.toString()],
-                    label: 'LIST',
-                    userData: {
-                        divisionCode: request.userData.divisionCode,
-                        page: nextPage
-                    }
-                });
-            } else {
-                log.debug('Reached last page of results');
+                await handleListPage($, request, enqueueLinks);
+            } finally {
+                $.root().remove();
             }
         },
-        failedRequestHandler(context: CheerioCrawlingContext<any, any>) {
-            const { request } = context;
-            const error = (context as any).error;
-            log.error(`Request ${request.url} failed`, error);
+        failedRequestHandler({ request, error }) {
+            log.error(`Request ${request.url} failed after ${request.retryCount} retries`, <any>error);
         }
-
     });
 
-    const startUrl = `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`;
-    log.debug(`Starting crawl with initial URL: ${startUrl}`);
+    try {
+        await crawler.run([{
+            url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
+            label: 'LIST',
+            userData: { divisionCode, page: 1 }
+        }]);
 
-    await crawler.run([{
-        url: startUrl,
-        label: 'LIST',
-        userData: { divisionCode, page: 1 }
-    }]);
+        const data = await Dataset.getData<SchoolData>();
+        log.info(`Scraping completed. Retrieved ${data.items.length} items`);
+        return data;
+    } catch (error: any) {
+        log.error('Scraping failed:', error);
+        throw error;
+    }
+}
 
-    const data = await Dataset.getData<SchoolData>();
-    log.debug(`Scraping completed. Retrieved ${data.items.length} items`);
-    console.log('Sample items:', data.items.slice(0, 3));
+async function handleDetailPage($: CheerioCrawlingContext['$'], request: any) {
+    const address = $("span[itemprop='address']").text().trim();
+    await Dataset.pushData({
+        ...request.userData.schoolInfo,
+        address: address || 'Address not found',
+        divisionCode: request.userData.divisionCode
+    });
+}
 
-    return data;
+async function handleListPage($: CheerioCrawlingContext['$'], request: any, enqueueLinks: CheerioCrawlingContext['enqueueLinks']) {
+    const schoolLinks = $(SCHOOL_TABLE_SELECTOR)
+        .find('tbody tr')
+        .map((_, row) => {
+            const $row = $(row);
+            const link = $row.find('td:first-child a').attr('href');
+
+            return link ? {
+                url: new URL(link, request.loadedUrl).toString(),
+                userData: {
+                    schoolInfo: {
+                        name: $row.find('td:first-child').text().trim(),
+                        division: $row.find('td:nth-child(2)').text().trim(),
+                        gradeSpan: $row.find('td:nth-child(3)').text().trim()
+                    }
+                }
+            } : null;
+        }).get().filter(Boolean);
+
+    if (schoolLinks.length > 0) {
+        await enqueueLinks({
+            urls: schoolLinks.map(link => link.url),
+            label: 'DETAIL',
+            transformRequestFunction: (req) => ({
+                ...req,
+                userData: schoolLinks.find(sl => sl.url === req.url)?.userData || {},
+                label: 'DETAIL'
+            })
+        });
+    }
+
+    const currentPage = request.userData.page;
+    const totalPages = getTotalPages($);
+
+    if (currentPage < totalPages) {
+        const nextUrl = new URL(request.url);
+        nextUrl.pathname = nextUrl.pathname.replace(/\/page\/\d+$/, '') + `/page/${currentPage + 1}`;
+
+        await enqueueLinks({
+            urls: [nextUrl.toString()],
+            label: 'LIST',
+            userData: {
+                divisionCode: request.userData.divisionCode,
+                page: currentPage + 1
+            }
+        });
+    }
+}
+
+function getTotalPages($: CheerioCrawlingContext['$']): number {
+    try {
+        return parseInt($(PAGINATION_SELECTOR).last().text().trim(), 10) || 1;
+    } catch (error) {
+        log.warning('Error parsing total pages, defaulting to 1');
+        return 1;
+    }
 }
 
 export function getRandomHeader() {
-    const rand = Math.random();
-    const deviceType = rand < 0.8 ? 'desktop' : rand < 0.95 ? 'mobile' : 'bot';
+    const deviceType = Math.random() < 0.9 ? 'desktop' : 'mobile';
     return {
         userAgent: userAgents[deviceType][Math.floor(Math.random() * userAgents[deviceType].length)],
-        referer: deviceType === 'bot'
-            ? 'https://www.google.com/'
-            : referers[Math.floor(Math.random() * referers.length)],
+        referer: referers[Math.floor(Math.random() * referers.length)],
         language: languages[Math.floor(Math.random() * languages.length)]
     };
 }

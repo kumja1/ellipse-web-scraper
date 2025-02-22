@@ -14,8 +14,12 @@ COPY . .
 
 # Stage 2: Production Stage
 FROM oven/bun:1-slim
+
 RUN apt-get update && apt-get install -y procps && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
+ENV CRAWLEE_MEMORY_MBYTES=256
 
 # Copy production dependencies and built application
 COPY --from=builder /app/node_modules node_modules
@@ -24,6 +28,7 @@ COPY --from=builder /app/src src
 
 # Expose application port
 EXPOSE 8000
+
 
 # Start command
 CMD ["bun", "run", "src/server.ts"]
