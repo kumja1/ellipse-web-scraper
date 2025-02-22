@@ -122,21 +122,23 @@ async function handleDetailPage($: CheerioCrawlingContext['$'], request: any, da
 }
 
 async function handleListPage($: CheerioCrawlingContext['$'], request: any, enqueueLinks: CheerioCrawlingContext['enqueueLinks']) {
-    const schoolLinks = $(SCHOOL_TABLE_SELECTOR + 'tbody tr')
-        .map((_, row) => {
+    const schoolLinks: any[] = [];
+    $(SCHOOL_TABLE_SELECTOR + ' tbody tr')
+        .each((_, row) => {
             const $row = $(row);
             const link = $row.find('td:eq(0) a').attr('href');
 
-            return link ? {
-                url: new URL(link, request.loadedUrl).toString(),
-                userData: {
-                    schoolInfo: {
-                        name: $row.find('td:first-child').text().trim(),
-                        division: $row.find('td:nth-child(2)').text().trim(),
-                        gradeSpan: $row.find('td:nth-child(3)').text().trim()
+            if (link)
+                schoolLinks.push({
+                    url: new URL(link, request.loadedUrl).toString(),
+                    userData: {
+                        schoolInfo: {
+                            name: $row.find('td:first-child').text().trim(),
+                            division: $row.find('td:nth-child(2)').text().trim(),
+                            gradeSpan: $row.find('td:nth-child(3)').text().trim()
+                        }
                     }
-                }
-            } : null;
+                });
         }).get().filter(Boolean);
 
     if (schoolLinks.length > 0) {
