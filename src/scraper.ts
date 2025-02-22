@@ -13,8 +13,9 @@ export async function scrapeSchools(divisionCode: number) {
     log.debug(`Starting scrapeSchools with divisionCode: ${divisionCode}`);
 
     const proxyConfiguration = new ProxyConfiguration({
-        proxyUrls: [
-            "http://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80"
+        tieredProxyUrls: [
+            [null],
+            ["http://gmyxzepk-rotate:29r7r2d3xequ@p.webshare.io:80"]
         ]
     });
 
