@@ -150,7 +150,8 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
             data
         });
 
-        await writer.write(data)
+        await writer.write(data);
+        log.info(`Crawling completed. Found ${data.length} schools`)
     }
     finally {
         await dataset.drop();
