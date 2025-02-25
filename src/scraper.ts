@@ -53,7 +53,7 @@ const crawler = new CheerioCrawler({
                 log.warning(`Retiring session for ${request.url}`);
                 session?.retire();
             }
-            await sleep(500 + Math.random() * 500);
+            await sleep(50);
         }
     ],
     requestHandler: async ({ $, request, enqueueLinks }: CheerioCrawlingContext) => {
@@ -136,12 +136,13 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     datasetMap.set(divisionCode, dataset);
 
     try {
-        await crawler.run([{
+        crawler.addRequests([{
             url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
             label: 'LIST',
             userData: { divisionCode, page: 1 }
-        }]);
-
+        }])
+        
+        if (!crawler.running)  await crawler.run();
         const data = (await dataset.getData()).items;
         await KeyValueStore.setValue(CACHE_KEY, {
             hash: currentHash,
