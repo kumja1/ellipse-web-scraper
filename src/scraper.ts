@@ -133,6 +133,7 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     }
 
     const dataset = await Dataset.open<SchoolData>(`schools-${divisionCode}`);
+    datasetMap.set(divisionCode, dataset);
 
     try {
         await crawler.run([{
@@ -153,6 +154,8 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     finally {
         await dataset.drop();
         await writer.close()
+
+        datasetMap.delete(divisionCode)
     }
 }
 
