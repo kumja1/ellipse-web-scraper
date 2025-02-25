@@ -28,7 +28,6 @@ const proxyConfiguration = new ProxyConfiguration({
 
 const datasetMap = new Map<number, Dataset>();
 
-let activeScrape: Promise<SchoolData[]> | null = null;
 
 const crawler = new CheerioCrawler({
     useSessionPool: true,
@@ -57,7 +56,6 @@ const crawler = new CheerioCrawler({
             await sleep(500 + Math.random() * 500);
         }
     ],
-    // Static request handler that uses the dataset from the global map.
     requestHandler: async ({ $, request, enqueueLinks }: CheerioCrawlingContext) => {
         const { divisionCode: code, page = 1 } = request.userData;
         const dataset = datasetMap.get(code);
@@ -73,7 +71,6 @@ const crawler = new CheerioCrawler({
             return;
         }
 
-        // Process the list page.
         const schoolLinks = $(SCHOOL_TABLE_SELECTOR + ' tbody tr')
             .map((_, row) => {
                 const $row = $(row);
@@ -120,55 +117,42 @@ const crawler = new CheerioCrawler({
     }
 });
 
-export async function scrapeSchools(divisionCode: number, forceRefresh = false): Promise<SchoolData[]> {
+export async function scrapeSchools(divisionCode: number, writer: WritableStreamDefaultWriter, forceRefresh = false) {
     log.setLevel(LogLevel.INFO);
 
-    while (activeScrape) {
-        await activeScrape;
-    }
-
-    activeScrape = (async () => {
-        const CACHE_KEY = `schools-${divisionCode}`;
-        const cachedData = await KeyValueStore.getValue<CachedData>(CACHE_KEY);
-        if (!forceRefresh && cachedData?.hash) {
-            log.info('Using valid cached data');
-            return cachedData.data;
-        }
-
-        const { hash: currentHash } = await fetchPageContent(divisionCode);
-        if (cachedData?.hash === currentHash) {
+    const CACHE_KEY = `schools-${divisionCode}`;
+    const cachedData = await KeyValueStore.getValue<CachedData>(CACHE_KEY);
+    const { hash: currentHash } = await fetchPageContent(divisionCode);
+    if (!forceRefresh && cachedData) {
+        log.info('Using valid cached data');
+        if (cachedData.hash === currentHash) {
             log.info('Content unchanged, updating timestamp');
             await KeyValueStore.setValue(CACHE_KEY, { ...cachedData, timestamp: Date.now() });
             return cachedData.data;
         }
+    }
 
-        const dataset = await Dataset.open<SchoolData>(`schools-${divisionCode}`);
-        datasetMap.set(divisionCode, dataset);
-
-        try {
-            await crawler.run([{
-                url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
-                label: 'LIST',
-                userData: { divisionCode, page: 1 }
-            }]);
-
-            const data = (await dataset.getData()).items;
-            await KeyValueStore.setValue(CACHE_KEY, {
-                hash: currentHash,
-                timestamp: Date.now(),
-                data
-            });
-            return data;
-        } finally {
-            await dataset.drop();
-            datasetMap.delete(divisionCode);
-        }
-    })();
+    const dataset = await Dataset.open<SchoolData>(`schools-${divisionCode}`);
 
     try {
-        return await activeScrape!;
-    } finally {
-        activeScrape = null;
+        await crawler.run([{
+            url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
+            label: 'LIST',
+            userData: { divisionCode, page: 1 }
+        }]);
+
+        const data = (await dataset.getData()).items;
+        await KeyValueStore.setValue(CACHE_KEY, {
+            hash: currentHash,
+            timestamp: Date.now(),
+            data
+        });
+
+        await writer.write(data)
+    }
+    finally {
+        await dataset.drop();
+        await writer.close()
     }
 }
 

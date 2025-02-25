@@ -7,14 +7,21 @@ async function handleRequest(req: Request) {
     const url = new URL(req.url)
     if (req.method === 'POST' && url.pathname === "/scrape") {
         try {
+            
             const formData = await req.formData()
             const divisionCode = Number(formData.get("divisionCode")?.toString());
-            const results = await scrapeSchools(divisionCode);
-            response = Response.json({
-                divisionCode,
-                schools: results,
+            const { readable, writable } = new TransformStream();
+            const writer = writable.getWriter();
+            
+            scrapeSchools(divisionCode, writer)
+                .catch(error => {
+                    console.error("Scraping error:", error);
+                    writer.abort(error);
+                });
 
-            });
+            response = new Response(readable, {
+                headers: { "Content-Type": "application/json" }
+            })
         } catch (error: any) {
             response = new Response(error.message, { status: 500 })
         }
