@@ -40,6 +40,7 @@ export class StreamScraper {
         sessionPoolOptions: {
             sessionOptions: { maxUsageCount: 8 }
         },
+        keepAlive: true,
         proxyConfiguration,
         maxConcurrency: 15,
         maxRequestsPerMinute: 300,
@@ -73,6 +74,7 @@ export class StreamScraper {
             queue
         });
 
+        this.crawler.requestQueue = queue;
         try {
             const cacheKey = `schools-${divisionCode}`;
             const [cached, currentHash] = await Promise.all([
@@ -91,7 +93,6 @@ export class StreamScraper {
                 userData: { divisionCode, page: 1 }
             })
 
-            this.crawler.requestQueue = queue;
             await this.crawler.run();
 
             const data = (await dataset.getData()).items;
@@ -104,6 +105,7 @@ export class StreamScraper {
             }));
         } finally {
             await this.cleanup(divisionCode);
+            this.crawler.requestQueue = undefined;
         }
     }
 
@@ -194,7 +196,7 @@ export class StreamScraper {
             job.writer.close()
         ]);
 
-        this.crawler.requestQueue = undefined;
         activeJobs.delete(divisionCode);
     }
+
 }
