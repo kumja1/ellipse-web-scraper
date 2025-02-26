@@ -37,6 +37,7 @@ const activeJobs = new Map<number, Job>();
 export class StreamScraper {
     private crawler = new CheerioCrawler({
         useSessionPool: true,
+        keepAlive:true,
         sessionPoolOptions: {
             sessionOptions: { maxUsageCount: 8 }
         },
@@ -85,12 +86,12 @@ export class StreamScraper {
                 return;
             }
 
-            queue.addRequest({
+            await queue.addRequest({
                 url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
                 label: 'LIST',
                 userData: { divisionCode, page: 1 }
             })
-            
+
             this.crawler.requestQueue = queue;
             await this.crawler.run();
 
@@ -193,7 +194,7 @@ export class StreamScraper {
             job.queue.drop(),
             job.writer.close()
         ]);
-        
+
         this.crawler.requestQueue = undefined;
         activeJobs.delete(divisionCode);
     }
