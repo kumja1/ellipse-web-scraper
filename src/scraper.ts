@@ -42,7 +42,7 @@ const crawler = new CheerioCrawler({
         desiredConcurrency: 10,
         maxConcurrency: 25,
         scaleUpStepRatio: 0.8,
-        systemStatusOptions: { maxMemoryOverloadedRatio: 0.85 }
+        systemStatusOptions: { maxMemoryOverloadedRatio: 0.95 }
     },
     preNavigationHooks: [
         async ({ request, session }) => {
@@ -118,16 +118,20 @@ const crawler = new CheerioCrawler({
 export async function scrapeSchools(divisionCode: number, writer: WritableStreamDefaultWriter, forceRefresh = false) {
     log.setLevel(LogLevel.INFO);
 
+    let isStreamClosed = false;
+    writer.closed.then(_ => isStreamClosed = true)
+
     const CACHE_KEY = `schools-${divisionCode}`;
     const targetUrl = `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`
     const cachedData: CachedData = JSON.parse(await KeyValueStore.getValue<string>(CACHE_KEY));
     const currentHash = await getPageHash(targetUrl);
+
     if (!forceRefresh && cachedData) {
         log.info('Using valid cached data');
         if (cachedData.hash === currentHash) {
             log.info('Content unchanged, updating timestamp');
             await KeyValueStore.setValue(CACHE_KEY, JSON.stringify({ ...cachedData, timestamp: Date.now() }));
-            return cachedData.data;
+            writeToStream(writer, JSON.stringify(cachedData.data), isStreamClosed)
         }
     }
 
@@ -148,7 +152,7 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
             data: datasetItems
         }));
 
-        await writer.write(JSON.stringify(datasetItems));
+        writeToStream(writer, JSON.stringify(datasetItems), isStreamClosed)
         log.info(`Crawling completed. Found ${datasetItems.length} schools`)
     }
     finally {
@@ -159,7 +163,9 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     }
 }
 
-async function getPageHash(url: string) {
+
+
+const getPageHash = async (url: string) => {
     const response = await fetch(url, { method: 'HEAD' });
     return hash(
         response.headers.get('ETag'),
@@ -167,8 +173,13 @@ async function getPageHash(url: string) {
         response.headers.get('Content-Length'))
 };
 
+const writeToStream = (writer: WritableStreamDefaultWriter, data: any, isClosed: boolean) => {
+    if (!isClosed)
+        writer.write(data)
+}
 
-const hash = (...params: string[]): string => {
+
+const hash = (...params: any[]): string => {
     try {
         return sha(
             params.join("-"),
@@ -180,7 +191,7 @@ const hash = (...params: string[]): string => {
     }
 };
 
-export function getRandomHeader() {
+const getRandomHeader = () => {
     const deviceType = Math.random() < 0.9 ? 'desktop' : 'mobile';
     return {
         'User-Agent': userAgents[deviceType][Math.floor(Math.random() * userAgents[deviceType].length)],
