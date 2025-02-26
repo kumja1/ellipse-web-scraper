@@ -44,8 +44,8 @@ export class StreamScraper {
         proxyConfiguration,
         maxConcurrency: 8,
         maxRequestsPerMinute: 150,
-        postNavigationHooks:[this.closeConnections],
-        preNavigationHooks:[this.cleanCookies],
+        postNavigationHooks: [this.closeConnections],
+        preNavigationHooks: [this.cleanCookies],
         requestHandler: async (context) => {
             const { divisionCode } = context.request.userData;
             const job = activeJobs.get(divisionCode);
@@ -94,7 +94,6 @@ export class StreamScraper {
                 label: 'LIST',
                 userData: { divisionCode, page: 1 }
             })
-
             await this.crawler.run();
 
             const data = (await dataset.getData()).items;
@@ -106,8 +105,12 @@ export class StreamScraper {
                 data
             }));
         } finally {
-            await this.cleanup(divisionCode);
+            await Promise.all([
+                this.cleanup(divisionCode),
+                this.crawler.teardown()
+            ])
             this.crawler.requestQueue = undefined;
+
         }
     }
 
