@@ -157,8 +157,7 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     }
     finally {
         await dataset.drop();
-        await writer.close()
-
+        if (!isStreamClosed) await writer.close()
         datasetMap.delete(divisionCode)
     }
 }
