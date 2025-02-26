@@ -1,6 +1,5 @@
-import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, KeyValueStore, CheerioCrawlingContext } from 'crawlee';
-import { languages, referers, userAgents } from './lists.js';
-import { sha, sleep, fetch } from 'bun';
+import { CheerioCrawler, CheerioCrawlingContext, Dataset, KeyValueStore, ProxyConfiguration, RequestQueue } from 'crawlee';
+import { sha, fetch } from 'bun';
 
 interface SchoolData {
     name: string;
@@ -16,6 +15,12 @@ interface CachedData {
     data: SchoolData[];
 }
 
+interface Job {
+    writer: WritableStreamDefaultWriter;
+    dataset: Dataset;
+    queue: RequestQueue;
+}
+
 const PAGINATION_SELECTOR = 'div.pagination a.page-numbers:not(.current):not(.next)';
 const SCHOOL_TABLE_SELECTOR = 'table:has(thead th:contains("School"))';
 const proxyConfiguration = new ProxyConfiguration({
@@ -25,46 +30,94 @@ const proxyConfiguration = new ProxyConfiguration({
     ]
 });
 
-const datasetMap = new Map<number, Dataset>();
 
 
-const crawler = new CheerioCrawler({
-    useSessionPool: true,
-    proxyConfiguration,
-    sessionPoolOptions: {
-        sessionOptions: { maxUsageCount: 5 },
-        persistStateKeyValueStoreId: undefined,
-    },
-    retryOnBlocked: true,
-    maxConcurrency: 15,
-    maxRequestsPerMinute: 200,
-    autoscaledPoolOptions: {
-        desiredConcurrency: 10,
-        maxConcurrency: 25,
-        scaleUpStepRatio: 0.8,
-        systemStatusOptions: { maxMemoryOverloadedRatio: 0.95 }
-    },
-    preNavigationHooks: [
-        async ({ request, session }) => {
-            request.headers = getRandomHeader();
-            if (request.retryCount > 0) {
-                log.warning(`Retiring session for ${request.url}`);
-                session?.retire();
+const activeJobs = new Map<number, Job>();
+
+export class StreamScraper {
+    private crawler = new CheerioCrawler({
+        useSessionPool: true,
+        sessionPoolOptions: {
+            sessionOptions: { maxUsageCount: 8 }
+        },
+        proxyConfiguration,
+        maxConcurrency: 15,
+        maxRequestsPerMinute: 300,
+        requestHandler: async (context) => {
+            const { divisionCode } = context.request.userData;
+            const job = activeJobs.get(divisionCode);
+
+            if (!job) {
+                context.log.warning(`Orphaned request for division ${divisionCode}`);
+                return;
             }
-            await sleep(50);
+
+            try {
+                await this.handleRequest(context, job);
+            } catch (error) {
+                context.log.error(`Request failed: ${context.request.url}`, error as any);
+                await job.writer.abort(error);
+            }
         }
-    ],
-    requestHandler: async ({ $, request, enqueueLinks }: CheerioCrawlingContext) => {
-        const { divisionCode: code, page = 1 } = request.userData;
-        const dataset = datasetMap.get(code);
-        if (!dataset) throw new Error(`No dataset found for division ${code}`);
+    });
+
+    public async scrape(divisionCode: number, writer: WritableStreamDefaultWriter, forceRefresh = false) {
+        const [dataset, queue] = await Promise.all([
+            Dataset.open(`schools-${divisionCode}`),
+            RequestQueue.open(`queue-${divisionCode}`)
+        ]);
+
+        activeJobs.set(divisionCode, {
+            writer,
+            dataset,
+            queue
+        });
+
+        try {
+            const cacheKey = `schools-${divisionCode}`;
+            const [cached, currentHash] = await Promise.all([
+                KeyValueStore.getValue<CachedData>(cacheKey),
+                this.getContentHash(divisionCode)
+            ]);
+
+            if (!forceRefresh && cached?.hash === currentHash) {
+                await this.writeResult(writer, cached.data);
+                return;
+            }
+
+            queue.addRequest({
+                url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
+                label: 'LIST',
+                userData: { divisionCode, page: 1 }
+            })
+            
+            this.crawler.requestQueue = queue;
+            await this.crawler.run();
+
+            const data = (await dataset.getData()).items;
+
+            await this.writeResult(writer, data);
+            await KeyValueStore.setValue(cacheKey, JSON.stringify({
+                hash: currentHash,
+                timestamp: Date.now(),
+                data
+            }));
+        } finally {
+            await this.cleanup(divisionCode);
+        }
+    }
+
+
+    private async handleRequest(context: CheerioCrawlingContext, job: Job) {
+        const { $, request, enqueueLinks } = context;
+        const { divisionCode, page = 1 } = request.userData;
 
         if (request.label === 'DETAIL') {
             const address = $("span[itemprop='address']").text().trim() || 'Address not found';
-            await dataset.pushData({
+            await job.dataset.pushData({
                 ...request.userData.schoolInfo,
                 address,
-                divisionCode: code
+                divisionCode
             });
             return;
         }
@@ -73,17 +126,7 @@ const crawler = new CheerioCrawler({
             .map((_, row) => {
                 const $row = $(row);
                 const link = $row.find('td:first-child a').attr('href');
-                return link ? {
-                    url: new URL(link, request.loadedUrl).toString(),
-                    userData: {
-                        schoolInfo: {
-                            name: $row.find('td:eq(0)').text().trim(),
-                            division: $row.find('td:eq(1)').text().trim(),
-                            gradeSpan: $row.find('td:eq(2)').text().trim()
-                        },
-                        divisionCode: code
-                    }
-                } : null;
+                return this.createSchoolLink(context, link, divisionCode);
             }).get().filter(Boolean);
 
         if (schoolLinks.length) {
@@ -102,99 +145,56 @@ const crawler = new CheerioCrawler({
         if (page < totalPages) {
             const nextUrl = new URL(request.url);
             nextUrl.pathname = nextUrl.pathname.replace(/\/page\/\d+$/, '') + `/page/${page + 1}`;
-            await enqueueLinks({
-                urls: [nextUrl.toString()],
+            await job.queue.addRequest({
+                url: nextUrl.toString(),
                 label: 'LIST',
-                userData: { divisionCode: code, page: page + 1 }
+                userData: { divisionCode, page: page + 1 }
             });
         }
-        $.root().remove();
-    },
-    failedRequestHandler({ request, error }) {
-        log.error(`Request failed after retries: ${request.url}`, { error });
-    }
-});
-
-export async function scrapeSchools(divisionCode: number, writer: WritableStreamDefaultWriter, forceRefresh = false) {
-    log.setLevel(LogLevel.INFO);
-
-    let isStreamClosed = false;
-    writer.closed.then(_ => isStreamClosed = true)
-
-    const CACHE_KEY = `schools-${divisionCode}`;
-    const targetUrl = `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`
-    const cachedData: CachedData = JSON.parse(await KeyValueStore.getValue<string>(CACHE_KEY));
-    const currentHash = await getPageHash(targetUrl);
-
-    if (!forceRefresh && cachedData) {
-        log.info('Using valid cached data');
-        if (cachedData.hash === currentHash) {
-            log.info('Content unchanged, updating timestamp');
-            await KeyValueStore.setValue(CACHE_KEY, JSON.stringify({ ...cachedData, timestamp: Date.now() }));
-            writeToStream(writer, JSON.stringify(cachedData.data), isStreamClosed)
-            return
-        }
     }
 
-    const dataset = await Dataset.open<SchoolData>(`schools-${divisionCode}`);
-    datasetMap.set(divisionCode, dataset);
-    try {
-        await crawler.run([{
-            url: targetUrl,
-            label: 'LIST',
-            userData: { divisionCode, page: 1 }
-        }]);
+    // Helper methods
+    private createSchoolLink(context: CheerioCrawlingContext, link: string | undefined, divisionCode: number) {
+        if (!link) return null;
 
-        const datasetItems = (await dataset.getData()).items
-        await KeyValueStore.setValue(CACHE_KEY, JSON.stringify({
-            hash: currentHash,
-            timestamp: Date.now(),
-            data: datasetItems
-        }));
-
-        writeToStream(writer, JSON.stringify(datasetItems), isStreamClosed)
-        log.info(`Crawling completed. Found ${datasetItems.length} schools`)
+        return {
+            url: new URL(link, context.request.loadedUrl).toString(),
+            userData: {
+                schoolInfo: {
+                    name: context.$('td:eq(0)').text().trim(),
+                    division: context.$('td:eq(1)').text().trim(),
+                    gradeSpan: context.$('td:eq(2)').text().trim()
+                },
+                divisionCode
+            }
+        };
     }
-    finally {
-        await dataset.drop();
-        if (!isStreamClosed) await writer.close()
-        datasetMap.delete(divisionCode)
+
+    private async getContentHash(divisionCode: number) {
+        const response = await fetch(`https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`, { method: 'HEAD' });
+        return sha([
+            response.headers.get('ETag'),
+            response.headers.get('Last-Modified'),
+            response.headers.get('Content-Length')
+        ].join(","), 'hex');
     }
-}
 
-
-
-const getPageHash = async (url: string) => {
-    const response = await fetch(url, { method: 'HEAD' });
-    return hash(
-        response.headers.get('ETag'),
-        response.headers.get('Last-Modified'),
-        response.headers.get('Content-Length'))
-};
-
-const writeToStream = (writer: WritableStreamDefaultWriter, data: any, isClosed: boolean) => {
-    if (!isClosed)
-        writer.write(data)
-}
-
-
-const hash = (...params: any[]): string => {
-    try {
-        return sha(
-            params.join("-"),
-            'hex'
-        );
-    } catch (error) {
-        log.warning('Hash generation failed', error as any);
-        return 'invalid';
+    private async writeResult(writer: WritableStreamDefaultWriter, data: any) {
+        const encoder = new TextEncoder();
+        await writer.write(encoder.encode(JSON.stringify(data)));
     }
-};
 
-const getRandomHeader = () => {
-    const deviceType = Math.random() < 0.9 ? 'desktop' : 'mobile';
-    return {
-        'User-Agent': userAgents[deviceType][Math.floor(Math.random() * userAgents[deviceType].length)],
-        'Referer': referers[Math.floor(Math.random() * referers.length)],
-        'Accept-Language': languages[Math.floor(Math.random() * languages.length)]
-    };
+    private async cleanup(divisionCode: number) {
+        const job = activeJobs.get(divisionCode);
+        if (!job) return;
+
+        await Promise.all([
+            job.dataset.drop(),
+            job.queue.drop(),
+            job.writer.close()
+        ]);
+        
+        this.crawler.requestQueue = undefined;
+        activeJobs.delete(divisionCode);
+    }
 }
