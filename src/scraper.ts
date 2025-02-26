@@ -140,7 +140,7 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
 
     try {
         await crawler.run([{
-            url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
+            url: targetUrl,
             label: 'LIST',
             userData: { divisionCode, page: 1 }
         }]);
