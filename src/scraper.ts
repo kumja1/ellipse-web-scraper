@@ -37,7 +37,6 @@ const activeJobs = new Map<number, Job>();
 export class StreamScraper {
     private crawler = new CheerioCrawler({
         useSessionPool: true,
-        keepAlive:true,
         sessionPoolOptions: {
             sessionOptions: { maxUsageCount: 8 }
         },
