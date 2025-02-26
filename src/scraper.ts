@@ -132,12 +132,12 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
             log.info('Content unchanged, updating timestamp');
             await KeyValueStore.setValue(CACHE_KEY, JSON.stringify({ ...cachedData, timestamp: Date.now() }));
             writeToStream(writer, JSON.stringify(cachedData.data), isStreamClosed)
+            return
         }
     }
 
     const dataset = await Dataset.open<SchoolData>(`schools-${divisionCode}`);
     datasetMap.set(divisionCode, dataset);
-
     try {
         await crawler.run([{
             url: targetUrl,
