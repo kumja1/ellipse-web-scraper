@@ -1,5 +1,4 @@
 import { CheerioCrawler, Dataset, ProxyConfiguration, log, LogLevel, KeyValueStore, CheerioCrawlingContext } from 'crawlee';
-import { CheerioAPI, load } from 'cheerio';
 import { languages, referers, userAgents } from './lists.js';
 import { sha, sleep, fetch } from 'bun';
 
@@ -31,7 +30,6 @@ const datasetMap = new Map<number, Dataset>();
 
 const crawler = new CheerioCrawler({
     useSessionPool: true,
-    keepAlive: true,
     proxyConfiguration,
     sessionPoolOptions: {
         sessionOptions: { maxUsageCount: 5 },
@@ -39,7 +37,7 @@ const crawler = new CheerioCrawler({
     },
     retryOnBlocked: true,
     maxConcurrency: 15,
-    maxRequestsPerMinute: 300,
+    maxRequestsPerMinute: 200,
     autoscaledPoolOptions: {
         desiredConcurrency: 10,
         maxConcurrency: 25,
@@ -121,13 +119,14 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     log.setLevel(LogLevel.INFO);
 
     const CACHE_KEY = `schools-${divisionCode}`;
-    const cachedData = await KeyValueStore.getValue<CachedData>(CACHE_KEY);
-    const { hash: currentHash } = await fetchPageContent(divisionCode);
+    const targetUrl = `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`
+    const cachedData: CachedData = JSON.parse(await KeyValueStore.getValue<string>(CACHE_KEY));
+    const currentHash = await getPageHash(targetUrl);
     if (!forceRefresh && cachedData) {
         log.info('Using valid cached data');
         if (cachedData.hash === currentHash) {
             log.info('Content unchanged, updating timestamp');
-            await KeyValueStore.setValue(CACHE_KEY, { ...cachedData, timestamp: Date.now() });
+            await KeyValueStore.setValue(CACHE_KEY, JSON.stringify({ ...cachedData, timestamp: Date.now() }));
             return cachedData.data;
         }
     }
@@ -136,22 +135,21 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     datasetMap.set(divisionCode, dataset);
 
     try {
-        crawler.addRequests([{
+        await crawler.run([{
             url: `https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`,
             label: 'LIST',
             userData: { divisionCode, page: 1 }
-        }])
-        
-        if (!crawler.running)  await crawler.run();
-        const data = (await dataset.getData()).items;
-        await KeyValueStore.setValue(CACHE_KEY, {
+        }]);
+
+        const datasetItems = (await dataset.getData()).items
+        await KeyValueStore.setValue(CACHE_KEY, JSON.stringify({
             hash: currentHash,
             timestamp: Date.now(),
-            data
-        });
+            data: datasetItems
+        }));
 
-        await writer.write(data);
-        log.info(`Crawling completed. Found ${data.length} schools`)
+        await writer.write(JSON.stringify(datasetItems));
+        log.info(`Crawling completed. Found ${datasetItems.length} schools`)
     }
     finally {
         await dataset.drop();
@@ -161,23 +159,19 @@ export async function scrapeSchools(divisionCode: number, writer: WritableStream
     }
 }
 
-async function fetchPageContent(divisionCode: number) {
-    const response = await fetch(`https://schoolquality.virginia.gov/virginia-schools?division=${divisionCode}`);
-    return { hash: hashSite(load(await response.text())) };
-}
+async function getPageHash(url: string) {
+    const response = await fetch(url, { method: 'HEAD' });
+    return hash(
+        response.headers.get('ETag'),
+        response.headers.get('Last-Modified'),
+        response.headers.get('Content-Length'))
+};
 
-const hashSite = ($: CheerioAPI): string => {
+
+const hash = (...params: string[]): string => {
     try {
         return sha(
-            ($(SCHOOL_TABLE_SELECTOR).html() ?? '') +
-            ($(PAGINATION_SELECTOR).html() ?? '')
-                .replace(/\s+/g, ' ')
-                .replace(/<!--.*?-->/gs, '')
-                .replace(/\s*</g, '<')
-                .replace(/>\s*/g, '>')
-                .replace(/"\s+/g, '"')
-                .replace(/\s+"/g, '"')
-                .toLowerCase(),
+            params.join("-"),
             'hex'
         );
     } catch (error) {

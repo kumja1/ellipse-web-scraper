@@ -1,6 +1,5 @@
 import { scrapeSchools } from './scraper.js';
 
-
 async function handleRequest(req: Request) {
 
     let response: Response | null = null;
