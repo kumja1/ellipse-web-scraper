@@ -38,12 +38,14 @@ export class StreamScraper {
     private crawler = new CheerioCrawler({
         useSessionPool: true,
         sessionPoolOptions: {
-            sessionOptions: { maxUsageCount: 8 }
+            sessionOptions: { maxUsageCount: 3 }
         },
         keepAlive: true,
         proxyConfiguration,
-        maxConcurrency: 15,
-        maxRequestsPerMinute: 300,
+        maxConcurrency: 8,
+        maxRequestsPerMinute: 150,
+        postNavigationHooks:[this.closeConnections],
+        preNavigationHooks:[this.cleanCookies],
         requestHandler: async (context) => {
             const { divisionCode } = context.request.userData;
             const job = activeJobs.get(divisionCode);
@@ -185,6 +187,15 @@ export class StreamScraper {
         const encoder = new TextEncoder();
         await writer.write(encoder.encode(JSON.stringify(data)));
     }
+
+    private async cleanCookies({ request }: CheerioCrawlingContext) {
+        request.headers!.cookie = '';
+    }
+
+    private async closeConnections({ response }: CheerioCrawlingContext) {
+        response.destroy();
+    }
+
 
     private async cleanup(divisionCode: number) {
         const job = activeJobs.get(divisionCode);
